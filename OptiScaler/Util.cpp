@@ -4,6 +4,7 @@
 #include "Config.h"
 
 #include <shlobj.h>
+#include <memory>
 
 extern HMODULE dllModule;
 
@@ -83,14 +84,15 @@ std::wstring Util::GetExeProductName()
     GetSystemDirectory(sysFolder, MAX_PATH);
     std::filesystem::path sysPath(sysFolder);
 
-    auto dll = LoadLibraryExW((sysPath / L"version.dll").c_str(), NULL, 0);
+    std::unique_ptr<std::remove_pointer_t<HMODULE>, decltype(&FreeLibrary)> dll(
+        LoadLibraryExW((sysPath / L"version.dll").c_str(), NULL, 0), FreeLibrary);
 
-    if (dll == nullptr)
+    if (!dll)
         return L"";
 
-    auto o_GetFileVersionInfoSizeW = (PFN_GetFileVersionInfoSizeW) GetProcAddress(dll, "GetFileVersionInfoSizeW");
-    auto o_GetFileVersionInfoW = (PFN_GetFileVersionInfoW) GetProcAddress(dll, "GetFileVersionInfoW");
-    auto o_VerQueryValueW = (PFN_VerQueryValueW) GetProcAddress(dll, "VerQueryValueW");
+    auto o_GetFileVersionInfoSizeW = (PFN_GetFileVersionInfoSizeW) GetProcAddress(dll.get(), "GetFileVersionInfoSizeW");
+    auto o_GetFileVersionInfoW = (PFN_GetFileVersionInfoW) GetProcAddress(dll.get(), "GetFileVersionInfoW");
+    auto o_VerQueryValueW = (PFN_VerQueryValueW) GetProcAddress(dll.get(), "VerQueryValueW");
 
     if (o_GetFileVersionInfoSizeW == nullptr || o_GetFileVersionInfoW == nullptr || o_VerQueryValueW == nullptr)
         return L"";
