@@ -29,13 +29,17 @@ class FSRDFeatureDx12 : public FSR31FeatureDx12
         static constexpr int kFirstKey = (int)FFX_API_CONFIGURE_DENOISER_KEY_CROSS_BILATERAL_NORMAL_STRENGTH;
         static constexpr int kLastKey = (int)FFX_API_CONFIGURE_DENOISER_KEY_DISOCCLUSION_THRESHOLD;
         static constexpr uint32_t kCount = (uint32_t)(kLastKey - kFirstKey + 1);
+        static constexpr uint32_t kKnownKeyCount = 6u;
 
         static_assert(kFirstKey <= kLastKey, "Unexpected FidelityFX denoiser key ordering");
+        static_assert(kCount == kKnownKeyCount,
+                      "FidelityFX denoiser key count changed; update DenoiserConfiguration member order");
 
         // Ordered by FfxApiConfigureDenoiserKey. FidelityFX denoiser keys are not local
         // array indices, so keep conversion centralized and symmetric. This prevents
-        // SetDefaultConfiguration() from ever querying/configuring a non-existent key 0
-        // while still surviving future SDKs that change the first enum value.
+        // SetDefaultConfiguration() from ever querying/configuring a non-existent key 0.
+        // If a newer SDK adds/removes denoiser keys, the static_assert above forces this
+        // struct and the UI defaults to be reviewed together.
         struct
         {
             float m_CrossBilateralNormalStrength;
