@@ -13,13 +13,16 @@
 
 ## Table of Contents
 
-**1.** [**About**](#about)  
-**2.** [**How it works?**](#how-it-works)  
-**3.** [**Supported APIs and Upscalers**](#which-apis-and-upscalers-are-supported)  
-**4.** [**Installation**](#installation)  
-**5.** [**Known Issues**](#known-issues)  
-**6.** [**Compilation and Credits**](#compilation)  
-**7.** [**Wiki**](https://github.com/optiscaler/OptiScaler/wiki)
+**1.** [About](#about)  
+**2.** [Current branch status](#current-branch-status)  
+**3.** [How it works](#how-it-works)  
+**4.** [Supported APIs and Upscalers](#which-apis-and-upscalers-are-supported)  
+**5.** [Installation](#installation)  
+**6.** [Configuration](#configuration)  
+**7.** [Build](#build)  
+**8.** [Branch documentation](#branch-documentation)  
+**9.** [Known Issues](#known-issues)  
+**10.** [Credits](#credits)
 
 <br />
 <div align="center">
@@ -28,164 +31,178 @@
   <a href="https://github.com/optiscaler/OptiScaler/releases/tag/nightly"><img src="https://img.shields.io/badge/Download-Nightly-purple?style=for-the-badge&logo=github&logoSize=auto" alt="Nightly release"></a>
   <a href="https://github.com/optiscaler/OptiScaler/wiki"><img src="https://img.shields.io/badge/Documentation-blue?style=for-the-badge&logo=gitbook&logoColor=white&logoSize=auto" alt="Wiki"></a>
 </div>
-<div align="center">
-  <a href="https://github.com/optiscaler/OptiScaler/releases"><img src="https://img.shields.io/github/downloads/optiscaler/optiscaler/total?style=for-the-badge&logo=gitextensions&logoSize=auto&label=Total" alt="Total DL"></a>
-  <a href="https://github.com/optiscaler/OptiScaler/releases/latest"><img src="https://img.shields.io/github/downloads/optiscaler/optiscaler/latest/total?style=for-the-badge&logo=gitextensions&logoSize=auto&label=Stable&color=green&logoColor=white" alt="Stable DL"></a>
-  <a href="https://github.com/optiscaler/OptiScaler/releases/tag/nightly"><img src="https://img.shields.io/github/downloads/optiscaler/OptiScaler/nightly/total?style=for-the-badge&logo=gitextensions&logoColor=white&logoSize=auto&label=Nightly&color=purple" alt="Nightly DL"></a>
-  <a href="https://github.com/optiscaler/OptiScaler/stargazers"><img src="https://img.shields.io/github/stars/optiscaler/optiscaler?style=for-the-badge&logo=githubsponsors&logoColor=white&label=S.T.A.R.S." alt="Stars"></a>
-</div>
-
 
 ## About
 
-**OptiScaler** is a tool that lets you replace upscalers in games that ***already support DLSS2+ / FSR2+ / XeSS*** ($`^1`$), as well as manage ***frame generation*** in already mentioned games _(either by replacing existing FG options or enabling it in DX12 games through experimental ***OptiFG***)_. It also offers extensive customization options for all users, including those with Nvidia GPUs using DLSS.
+**OptiScaler** is a middleware tool that intercepts supported game upscaler and frame generation calls, then redirects them to the selected backend. It can replace supported DLSS2+ / FSR2+ / XeSS upscaling paths and manage supported frame generation paths in games that already expose the relevant integration points.
 
 > [!CAUTION]
-> * We've been informed about some **FAKE websites** presenting themselves as OptiScaler team, so we would like to strongly highlight that we **DO NOT HAVE an official website!**  
-> * Only **LEGIT places** are this Github, our Discord server and Nitec's NexusMods page.  
-> * OptiScaler is **FREE**, any kind of monetary requirements are scams as we don't even have a donation link at the moment!  
+> Do not use this mod with online games or anti-cheat protected modes. It may trigger anti-cheat software and cause bans.
 
-> [!TIP]
-> _For example, if a game has DLSS only, OptiScaler can be used to replace DLSS with XeSS or FSR 3.1 (also works for FSR2-only games, like The Outer Worlds Spacer's Choice, albeit requires manually providing nvngx_dlss.dll)._
+> [!CAUTION]
+> Fake websites have presented themselves as the OptiScaler team. The legitimate public places are the GitHub repository, the Discord server, and Nitec's NexusMods page.
 
-**Key aspects of OptiScaler:**
-- Enables usage of XeSS, FSR2, FSR3, **FSR4**$`^2`$ (_officially, RDNA4 only_) and DLSS in (temporal) upscaler-enabled games
-- Allows users to fine-tune their upscaling experience with a wide range of tweaks and enhancements (RCAS & MAS, Output Scaling, DLSS Presets, Ratio & DRS Overrides etc.)
-- Since v0.7.0+, added ***experimental DX12*** frame generation support with possible HUDfix solution ([**OptiFG**](#optifg--hudfix-experimental-hud-ghosting-fix))
-- Supports [**Fakenvapi**](#installation) integration - enables Reflex hooking and injecting _Anti-Lag 2_ (RDNA1+ only), _LatencyFlex_ (LFX) or _XeLL_ (Intel only) - _bundled since 0.9_  
-- Since v0.7.7, added support for **Nukem's** FSR3-FG mod [**dlssg-to-fsr3**](#installation), only supports games with ***native DLSS-FG*** - _bundled since 0.9_
-- Since v0.7.8, added **ASI plugin loading** support (_disabled_ by default (`LoadAsiPlugins=` in INI), loads from customisable folder, default `plugins`)
-- New project - [**OptiPatcher**](https://github.com/optiscaler/OptiPatcher) - an ASI Plugin for OptiScaler for enabling DLSS and DLSSG inputs without spoofing in ***supported games***.
-- Since v0.7.8, OptiScaler is now automatically applying certain game patches for a better out-of-the-box experience
-- Since v0.9.0, separated FG Inputs and Outputs, added XeFG and FSR4-FG support, as well as bundled Fakenvapi and Nukem's FSR3-FG mod
-- This fork branch is testing FSR SDK 2.2 alignment work, including FSR Ray Regeneration 1.1 compatibility cleanup and Black Myth: Wukong-specific RR investigation notes.
-- For a detailed list of all features, check [Features](Features.md)
+Key features inherited from OptiScaler upstream include XeSS, FSR2/FSR3/FSR4-era upscaler paths, DLSS replacement paths, OptiFG, FSR/Xe frame generation routing, Fakenvapi integration, ASI plugin loading, and game-specific quirks.
 
-> [!NOTE]
-> ### Fork branch status
-> This branch targets newer FidelityFX integration work: FSR upscaling 4.1 / SDK 2.2 expectations, FSR Ray Regeneration 1.1 denoiser configuration cleanup, and improved DLSS Ray Reconstruction to FSR Ray Regeneration translation behavior. Black Myth: Wukong support still needs in-game validation with PIX/RenderDoc-style captures before it should be treated as production-ready.
+## Current branch status
 
+This fork branch is `fsr-sdk-22-rr-wukong`. It is an experimental staging branch for:
 
-> [!IMPORTANT]
-> _**Always check the [Wiki Compatibility list](https://github.com/optiscaler/OptiScaler/wiki) for known game issues and workarounds.**_  
-> Also please check the  [***OptiScaler known issues***](#known-issues) at the end regarding **RTSS** compatibility.  
-> A separate [***FSR4 Compatibility list***](https://github.com/optiscaler/OptiScaler/wiki/FSR4-Compatibility-List) is available for community-sourced tested games.  
-> ***[3]** For **not bundled** items, please check [Installation](#installation).*  
+- FSR SDK 2.2-era integration cleanup.
+- FSR Ray Regeneration 1.1 configuration hardening.
+- DLSS Ray Reconstruction to FSR Ray Regeneration translation-layer investigation.
+- Black Myth: Wukong validation work.
+- A proposed FSR-RR Input Doctor diagnostics feature.
 
-> [!NOTE]
-> ### Upscaler notes
-> <details>
->  <summary><b>Click for [1], [2] </b></summary>  
->  
-> **[1]** For **Unreal Engine** games, only UE XeSS -> Opti XeSS/FSR4 work  
->  
-> *Regarding **XeSS** inputs, since **Unreal Engine plugin** does not provide depth, replacing in-game XeSS breaks other upscalers (e.g. Redout 2 as a XeSS-only game), but you can still apply RCAS sharpening to XeSS to reduce blurry visuals.* 
->
-> *Regarding **FSR inputs**, FSR 3.1 is the first version with a fully standardised, forward-looking API and should be fully supported. Since FSR2 and FSR3 support custom interfaces, game support will depend on the developers' implementation. With Unreal Engine games, you might need [ini tweaks](https://github.com/optiscaler/OptiScaler/wiki/Unreal-Engine-Tweaks) for FSR inputs.*  
->
-> **[2]** *Regarding **FSR4**, please check [FSR4 Compatibility list](https://github.com/optiscaler/OptiScaler/wiki/FSR4-Compatibility-List) for known supported games and general info.*
-> 
-> </details>
+Implemented in this branch:
 
+- Hardened FSR-RR denoiser key/index mapping.
+- Deterministic FSR-RR state initialization for denoiser context and camera matrices.
+- Compile-time guard for FidelityFX denoiser key-count drift.
+- Windows build script: `scripts/build-optiscaler.ps1`.
+- Batch build wrapper: `build-optiscaler.bat`.
+- FSR-RR game report issue template.
+- Current branch docs under `docs/`.
 
-## Official Discord Server: [OptiScaler](https://discord.gg/wEyd9w4hG5)
+Not implemented yet:
 
-*This project is based on [PotatoOfDoom](https://github.com/PotatoOfDoom)'s excellent [CyberFSR2](https://github.com/PotatoOfDoom/CyberFSR2).*
+- The full upscaler API target bump inside `FSR31Feature_Dx12.cpp`.
+- Dedicated Black Myth: Wukong RR quirk wiring in `Quirks.h` / `FSRDFeature_Dx12.cpp`.
+- Runtime RR input logging.
+- RR Input Doctor overlay/log implementation.
+- Verified local MSBuild result from this ChatGPT environment.
 
-## How it works?
-* OptiScaler acts as a middleware, it intercepts upscaler calls from the game (_**Inputs**_) and redirects them to the chosen upscaling backend (_**Output**_), allowing user to replace one technology with another one. **Inputs -> OptiScaler -> Outputs**  
-* _Or put more bluntly, **Input** is the upscaler used in game settings, and **Output** the one selected in Opti Overlay._
-* _Same goes for FG options which are separated into **FG Source** and **FG Output**._
+See [`docs/documentation-status.md`](docs/documentation-status.md) for the documentation map and current branch truth table.
 
-> [!NOTE]
-> * Pressing **`Insert`** should open the Optiscaler **Overlay** in-game with all of the options (_`ShortcutKey=` can be changed in the INI file, or under **Keybinds** in the overlay_). 
-> * Pressing **`Page Up`** shows the performance stats overlay in the top left, and can be cycled between different modes with **`Page Down`** (_keybinds customisable in the overlay_).  
-> * If Opti overlay is instantly disappearing after trying Insert a few times, maybe try **`Alt + Insert`** ([reported workaround](https://github.com/optiscaler/OptiScaler/issues/484) for alternate keyboard layouts).
+## How it works
+
+OptiScaler acts as an input/output translation layer:
+
+```text
+Game upscaler or frame generation input -> OptiScaler -> selected backend output
+```
+
+The in-game setting usually controls the **input** path exposed by the game. The OptiScaler overlay controls the **output** backend selected by the user. Frame generation is similarly split into a source/input path and an output implementation.
+
+Press **Insert** to open the overlay in-game. Press **Page Up** to show the performance stats overlay and **Page Down** to cycle its mode. Keybinds can be customized in the overlay or INI.
 
 ![inputs_and_outputs](https://github.com/user-attachments/assets/7ff37fd7-515f-488d-99ff-faa586e206fc)
 
 ## Which APIs and Upscalers are Supported?
-Currently **OptiScaler** can be used with DirectX 11, DirectX 12 and Vulkan, but each API has different sets of supported upscalers.  
-[**OptiFG**](#optifg--hudfix-experimental-hud-ghosting-fix) currently **only supports DX12** and is explained in a separate paragraph.
 
-#### For DirectX 12
-- XeSS (Default)
-- FSR 2.1.2, 2.2.1
-- FSR 3.X (and FSR 2.3.X)
-- FSR 4.X (via FSR3.X update, _officially RDNA4 only_)
+OptiScaler supports DirectX 11, DirectX 12, and Vulkan, but supported upscalers differ by API and by the game integration.
+
+### DirectX 12
+
+- XeSS
+- FSR 2.x / FSR 3.x / FSR 4.x-era paths
+- DLSS replacement paths
+- FSR Ray Regeneration path under active experimental work in this branch
+
+### DirectX 11
+
+- Native FSR 2.2.1 path
+- Native DLSS path
+- Native XeSS path where supported
+- Some DX12-backed paths through D3D11on12, with compatibility and performance caveats
+
+### Vulkan
+
+- FSR2 / FSR3-era paths
+- FSR4-era path via DX12-backed update where supported
 - DLSS
+- XeSS
 
-#### For DirectX 11
-- FSR 2.2.1 (Default, native DX11)
-- FSR 3.1.2 (unofficial port to native DX11)
-- DLSS (native DX11)
-- XeSS 2.X (native DX11, _Intel ARC only_)
-- XeSS, FSR 2.1.2, 2.2.1, FSR 3.X w/Dx12 (_via D3D11on12_)$`^1`$
-- FSR 4.X (via FSR 3.X w/Dx12 update, _officially RDNA4 only_)
+### OptiFG + HUDfix
 
-> [!NOTE]
-> <details>
->  <summary><b>Expand for [1]</b></summary>
->
-> _**[1]** These implementations use a background DirectX12 device to be able to use DX12-only upscalers. There's a performance penalty up to 10-ish % for this method, but allows many more upscaler options. Also native DX11 implementation of FSR 2.2.1 is a backport from Unity renderer and has its own problems of which some were fixed by OptiScaler._
-> </details>
-
-#### For Vulkan
-- FSR 4.X (via FSR 3.X w/Dx12 update, _officially RDNA4 only_)
-- FSR2 2.1.2 (Default), 2.2.1
-- FSR3 3.1 (and FSR2 2.3.2)
-- DLSS
-- XeSS 2.x
-
-#### OptiFG + HUDfix (experimental HUD ghosting fix) 
-**OptiFG** was added with **v0.7** and is **only supported in DX12**. 
-It's an **experimental** way of adding FG to games without native Frame Generation, or can also be used as a last case scenario if the native FG is not working properly.  
-* Currently supports FSR3-FG (requires HUDfix to avoid HUD ghosting), XeFG and FSR4-FG (ML model deals with the HUD, so may or may not require HUDfix).
-
-For more information on OptiFG and how to use it, please check the Wiki page - [OptiFG](https://github.com/optiscaler/OptiScaler/wiki/OptiFG).
-
+OptiFG is experimental DX12 frame generation support. It can add frame generation to some games without native frame generation, or serve as a fallback when native FG replacement paths do not work correctly. HUD ghosting behavior depends on the game and selected FG path.
 
 ## Installation
-> [!CAUTION]
-> _**Warning**: **Do not use this mod with online games.** It may trigger anti-cheat software and cause bans!_
 
 > [!IMPORTANT]
-> **For installation steps, please check the [**Wiki**](https://github.com/optiscaler/OptiScaler/wiki)**  
+> For normal user installation steps, use the upstream Wiki and compatibility list first. This branch is experimental and primarily intended for local builds/testing.
+
+For branch-local building, see [`docs/build-optiscaler.md`](docs/build-optiscaler.md).
 
 ## Configuration
-Please check [this](Config.md) document for configuration parameters and explanations. If your GPU is not an Nvidia one, check [GPU spoofing options](Spoofing.md) *(Will be updated)*
+
+The legacy configuration reference is [`Config.md`](Config.md). GPU spoofing information is in [`Spoofing.md`](Spoofing.md).
+
+Branch-specific FSR-RR and Black Myth: Wukong caveats are tracked in [`docs/fsr-sdk-22-ray-regeneration-wukong.md`](docs/fsr-sdk-22-ray-regeneration-wukong.md). The proposed diagnostics feature is tracked in [`docs/fsr-rr-input-doctor.md`](docs/fsr-rr-input-doctor.md).
+
+## Build
+
+Requirements:
+
+- Windows 10/11
+- Git
+- Visual Studio 2022 or Visual Studio Build Tools 2022
+- Desktop development with C++ workload
+- MSVC v143 toolset
+- Windows 10 SDK
+
+Fresh checkout:
+
+```powershell
+git clone --recursive -b fsr-sdk-22-rr-wukong https://github.com/phantoslayer21/OptiScaler.git
+cd OptiScaler
+```
+
+Build Release x64:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-optiscaler.ps1 -Configuration Release -Platform x64 -Clean
+```
+
+Or:
+
+```cmd
+build-optiscaler.bat -Configuration Release -Platform x64 -Clean
+```
+
+Output is copied to:
+
+```text
+artifacts\OptiScaler-Release-x64\
+```
+
+This branch has not been compiled inside this ChatGPT environment because MSBuild/Visual Studio are unavailable here. Treat a successful local `Release|x64` build as the source of truth.
+
+## Branch documentation
+
+Current branch docs:
+
+- [`docs/documentation-status.md`](docs/documentation-status.md)
+- [`docs/build-optiscaler.md`](docs/build-optiscaler.md)
+- [`docs/fsr-sdk-22-ray-regeneration-wukong.md`](docs/fsr-sdk-22-ray-regeneration-wukong.md)
+- [`docs/fsr-rr-input-doctor.md`](docs/fsr-rr-input-doctor.md)
+- [`.github/ISSUE_TEMPLATE/fsr-ray-regeneration-game-report.yml`](.github/ISSUE_TEMPLATE/fsr-ray-regeneration-game-report.yml)
 
 ## Known Issues
 
-> [!NOTE]
-> **For a list of known issues, please check the [**Wiki**](https://github.com/optiscaler/OptiScaler/wiki)**.
-> 
-> Also worth checking the [Compatibility List](https://github.com/optiscaler/OptiScaler/wiki/Compatibility-List) for possible game issues and their fixes.
+Check the upstream Wiki compatibility list for known game issues and workarounds. For FSR-RR branch work, use the docs above and file game reports with the FSR-RR issue template.
 
-## Compilation
+## Credits
 
-### Requirements
-* Visual Studio 2022
+This project is based on [PotatoOfDoom](https://github.com/PotatoOfDoom)'s [CyberFSR2](https://github.com/PotatoOfDoom/CyberFSR2).
 
-### Instructions
-* Clone this repo with **all of its submodules**.
-* Open the OptiScaler.sln with Visual Studio 2022.
-* Build the project
+Thanks to:
 
-## Thanks
-* @PotatoOfDoom for CyberFSR2
-* @Artur for DLSS Enabler and helping me implement NVNGX api correctly
-* @LukeFZ & @Nukem for their great mods and sharing their knowledge 
-* @FakeMichau for continous support, testing and feature creep
-* @QM for continous testing efforts and helping me to reach games
-* @TheRazerMD for continous testing and support
-* @Cryio, @krispy, @krisshietala, @Lordubuntu, @scz, @Veeqo for their hard work on (now outdated) [compatibility matrix](https://docs.google.com/spreadsheets/d/1qsvM0uRW-RgAYsOVprDWK2sjCqHnd_1teYAx00_TwUY)
-* And the whole DLSS2FSR community for all their support
+- @PotatoOfDoom for CyberFSR2
+- @Artur for DLSS Enabler and NVNGX API work
+- @LukeFZ & @Nukem for their mods and shared knowledge
+- @FakeMichau for support, testing, and feature work
+- @QM for testing efforts and game reach
+- @TheRazerMD for testing and support
+- @Cryio, @krispy, @krisshietala, @Lordubuntu, @scz, @Veeqo for compatibility matrix work
+- The DLSS2FSR community
 
-## Credit
-This project uses [FreeType](https://gitlab.freedesktop.org/freetype/freetype) licensed under the [FTL](https://gitlab.freedesktop.org/freetype/freetype/-/blob/master/docs/FTL.TXT)
+## License / Third-party credit
+
+This project uses [FreeType](https://gitlab.freedesktop.org/freetype/freetype) licensed under the [FTL](https://gitlab.freedesktop.org/freetype/freetype/-/blob/master/docs/FTL.TXT).
 
 ## Sponsors
+
 <table>
  <tbody>
   <tr>
