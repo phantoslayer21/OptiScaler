@@ -1,6 +1,12 @@
 # Building OptiScaler DLL
 
-This branch includes a Windows build script for local Visual Studio builds.
+This document is current for the `fsr-sdk-22-rr-wukong` branch.
+
+## Build status
+
+The branch includes a Windows build script and batch wrapper. The build path is ready for a local Visual Studio/MSBuild run, but it has not been compiled inside this ChatGPT environment because this sandbox does not provide Visual Studio, MSBuild, or the Windows SDK.
+
+Treat a successful local MSBuild run as the source of truth. If it fails, fix the first compiler or linker error before chasing later summary errors.
 
 ## Requirements
 
@@ -10,6 +16,7 @@ This branch includes a Windows build script for local Visual Studio builds.
 - Visual Studio workload: **Desktop development with C++**
 - MSVC v143 toolset
 - Windows 10 SDK
+- Optional: 7-Zip, only needed for the existing `ReleaseDebug` post-build archive command
 
 ## Fresh checkout
 
@@ -21,12 +28,13 @@ cd OptiScaler
 If the repo was already cloned without submodules:
 
 ```powershell
+git submodule sync --recursive
 git submodule update --init --recursive
 ```
 
 ## Build Release x64
 
-From the repo root:
+Use `Release|x64` first. It is the normal DLL/package build path.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-optiscaler.ps1 -Configuration Release -Platform x64 -Clean
@@ -40,7 +48,7 @@ build-optiscaler.bat -Configuration Release -Platform x64 -Clean
 
 ## Build ReleaseDebug x64
 
-Use this when you want release-like performance with debug symbols/logging:
+Use `ReleaseDebug|x64` when you need release-like optimization with debug information/logging. The existing project file may invoke `7z.exe` in the post-build step for this configuration.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-optiscaler.ps1 -Configuration ReleaseDebug -Platform x64 -Clean
@@ -48,7 +56,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-optiscaler.p
 
 ## Output
 
-The Visual Studio project already stages the Release package under:
+The Visual Studio project stages the Release package under:
 
 ```text
 x64\Release\a\
@@ -86,12 +94,13 @@ artifacts\OptiScaler-ReleaseDebug-x64\
 
 ## If the build fails
 
-Run the script again with `ReleaseDebug` first. If it still fails, copy the first compiler or linker error, not the final summary line. The first real error is the useful one.
-
-Common setup issues:
+Use the first real compiler or linker error, not the final MSBuild summary line. Common setup issues are:
 
 - Missing Visual Studio C++ workload.
-- Submodules not initialized.
+- Missing MSVC v143 toolset.
 - Missing Windows SDK.
+- Submodules not initialized.
 - Antivirus/Defender locking generated DLLs during post-build copy.
 - 7-Zip not installed for `ReleaseDebug` post-build archive steps.
+
+For branch-specific RR/Wukong status, see [`fsr-sdk-22-ray-regeneration-wukong.md`](fsr-sdk-22-ray-regeneration-wukong.md).
