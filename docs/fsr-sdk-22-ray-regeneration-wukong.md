@@ -9,12 +9,22 @@ This branch is intended to track the FSR SDK 2.2-era integration path for OptiSc
 - Harden FSR Ray Regeneration 1.1 configuration and dispatch behavior.
 - Improve the DLSS Ray Reconstruction to FSR Ray Regeneration translation layer.
 - Track Black Myth: Wukong as a dedicated validation target instead of treating it as a generic Unreal Engine title.
+- Add an RR Input Doctor path so users can see which DLSS-RR inputs exist, which conversion fallbacks are active, and which assumptions are likely hurting quality.
 
 ## Implemented in this branch
 
 - Fixed denoiser configuration key/index mapping in `FSRDFeature_Dx12.h` so local array indices are not confused with FidelityFX denoiser enum values.
 - Hardened `FSRDFeatureDx12` member initialization so the first frame starts with deterministic denoiser state and identity camera matrices instead of relying on uninitialized matrix/handedness data.
+- Added compile-time guards so future FidelityFX SDK denoiser key changes fail loudly instead of silently desynchronizing the config array.
+- Added an RR Input Doctor design document: [`docs/fsr-rr-input-doctor.md`](fsr-rr-input-doctor.md).
+- Added a structured FSR-RR game report issue template: [`.github/ISSUE_TEMPLATE/fsr-ray-regeneration-game-report.yml`](../.github/ISSUE_TEMPLATE/fsr-ray-regeneration-game-report.yml).
 - Documented branch status in the README.
+
+## Missing feature: RR Input Doctor
+
+The highest-value usability/quality feature missing from this branch is an **FSR-RR Input Doctor**. Ray regeneration failures are usually not self-explanatory: a bad result can come from missing hit distance, roughness packing, bad motion-vector scale, wrong handedness, invalid matrices, depth mode mismatch, bad reset/history state, or a denoiser tuning problem.
+
+The Input Doctor should expose those facts directly in the overlay and logs. The intended design is documented in [`docs/fsr-rr-input-doctor.md`](fsr-rr-input-doctor.md).
 
 ## Remaining code work
 
@@ -33,6 +43,7 @@ The following changes should be made after full-file patching or local build acc
    - depth mode,
    - roughness source,
    - matrix source.
+5. Implement the RR Input Doctor state collector and overlay/log output described in `docs/fsr-rr-input-doctor.md`.
 
 ## Black Myth: Wukong validation checklist
 
