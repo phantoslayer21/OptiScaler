@@ -1,5 +1,11 @@
 # FSR Ray Regeneration Input Doctor
 
+This document is current for the `fsr-sdk-22-rr-wukong` branch.
+
+## Current status
+
+The FSR-RR Input Doctor is a **design proposal**, not an implemented overlay page yet. The branch currently contains FSR-RR config/state hardening and documentation, but the state collector, overlay table, log output, and auto-profile suggestions described here still need to be wired into the C++ code.
+
 ## Why this feature should exist
 
 FSR Ray Regeneration is much more sensitive than normal temporal upscaling because it depends on several high-value inputs being correct at the same time: color, motion vectors, depth, normals, roughness, diffuse/specular albedo, camera matrices, frame timing, jitter, and optionally specular hit distance.
@@ -152,3 +158,8 @@ Once the Input Doctor exists, add **Auto Profile Suggestions**:
 - If motion vector scale is missing, suggest common UE pixel-space defaults.
 - If specular hit distance is missing in mode-2, suggest trying mode-1 or lower stability bias.
 - If DRS reinitializes constantly, suggest fixed render scale for RR validation.
+
+## Related docs
+
+- [`fsr-sdk-22-ray-regeneration-wukong.md`](fsr-sdk-22-ray-regeneration-wukong.md)
+- [`documentation-status.md`](documentation-status.md)
