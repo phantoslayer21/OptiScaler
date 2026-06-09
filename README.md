@@ -58,7 +58,12 @@
 - New project - [**OptiPatcher**](https://github.com/optiscaler/OptiPatcher) - an ASI Plugin for OptiScaler for enabling DLSS and DLSSG inputs without spoofing in ***supported games***.
 - Since v0.7.8, OptiScaler is now automatically applying certain game patches for a better out-of-the-box experience
 - Since v0.9.0, separated FG Inputs and Outputs, added XeFG and FSR4-FG support, as well as bundled Fakenvapi and Nukem's FSR3-FG mod
+- This fork branch is testing FSR SDK 2.2 alignment work, including FSR Ray Regeneration 1.1 compatibility cleanup and Black Myth: Wukong-specific RR investigation notes.
 - For a detailed list of all features, check [Features](Features.md)
+
+> [!NOTE]
+> ### Fork branch status
+> This branch targets newer FidelityFX integration work: FSR upscaling 4.1 / SDK 2.2 expectations, FSR Ray Regeneration 1.1 denoiser configuration cleanup, and improved DLSS Ray Reconstruction to FSR Ray Regeneration translation behavior. Black Myth: Wukong support still needs in-game validation with PIX/RenderDoc-style captures before it should be treated as production-ready.
 
 
 > [!IMPORTANT]
@@ -189,4 +194,3 @@ This project uses [FreeType](https://gitlab.freedesktop.org/freetype/freetype) l
   </tr>
  </tbody>
 </table>
-
