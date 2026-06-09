@@ -1,0 +1,146 @@
+name: FSR Ray Regeneration game report
+description: Report FSR Ray Regeneration / DLSS Ray Reconstruction translation behavior in a specific game
+title: "[FSR-RR] <Game name>: <short issue>"
+labels: ["fsr-rr", "compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for FSR Ray Regeneration issues, DLSS Ray Reconstruction replacement issues, or game-specific RR validation reports.
+
+        Please test only in offline/single-player contexts. Do not use OptiScaler with anti-cheat protected online modes.
+
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      description: Full game title and storefront/version if known.
+      placeholder: "Black Myth: Wukong / Steam / build ..."
+    validations:
+      required: true
+
+  - type: input
+    id: exe
+    attributes:
+      label: Executable name
+      description: Exact executable name shown in logs or Task Manager.
+      placeholder: "b1-win64-shipping.exe"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: api
+    attributes:
+      label: Graphics API
+      options:
+        - DirectX 12
+        - DirectX 11
+        - Vulkan
+        - Unknown
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and driver
+      placeholder: "RX 9070 XT, AMD driver ..."
+    validations:
+      required: true
+
+  - type: input
+    id: optiscaler-build
+    attributes:
+      label: OptiScaler build / branch / commit
+      placeholder: "fsr-sdk-22-rr-wukong-mainline @ <commit>"
+    validations:
+      required: true
+
+  - type: textarea
+    id: enabled-options
+    attributes:
+      label: Enabled options
+      description: List the upscaler, frame generation mode, RR mode, debug mode, quality mode, resolution, and relevant INI settings.
+      placeholder: |
+        Upscaler:
+        Frame generation:
+        Denoiser mode:
+        Debug mode:
+        Resolution / quality mode:
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: inputs
+    attributes:
+      label: DLSS-RR / FSR-RR input availability
+      description: Check everything confirmed by logs, debug overlay, or captures.
+      options:
+        - label: Color buffer present
+        - label: Motion vectors present
+        - label: Depth buffer present
+        - label: Normals present
+        - label: Roughness present as a separate texture
+        - label: Roughness appears packed in normals
+        - label: Diffuse albedo present
+        - label: Specular albedo present
+        - label: Specular hit distance present
+        - label: NGX view/projection matrices present
+        - label: Streamline camera constants present
+
+  - type: checkboxes
+    id: symptoms
+    attributes:
+      label: Visual symptoms
+      options:
+        - label: Reflection shimmer / fireflies
+        - label: Ghost trails behind moving objects
+        - label: Foliage or hair smearing
+        - label: Roughness inversion / matte surfaces become shiny
+        - label: Overdarkened specular or indirect lighting
+        - label: Disocclusion smearing
+        - label: Camera pan instability
+        - label: Crash during RR dispatch
+        - label: Crash during resolution or quality-mode change
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Exact steps needed to reproduce the issue.
+      placeholder: |
+        1. Launch game with ...
+        2. Enable ...
+        3. Go to ...
+        4. Pan camera / move character / change setting ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: "Stable denoised reflections with no major ghosting or roughness inversion."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: "Describe what broke and whether it happens immediately, after movement, after a reset, etc."
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / captures / screenshots
+      description: Attach logs, screenshots, video, or capture notes. Do not upload copyrighted game assets beyond what is needed for debugging.
+      placeholder: "Paste relevant log snippets here or attach files."
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Anything else that may help, including debug view observations or whether native DLSS-RR behaves correctly.
