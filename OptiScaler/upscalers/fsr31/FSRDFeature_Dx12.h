@@ -26,11 +26,16 @@ class FSRDFeatureDx12 : public FSR31FeatureDx12
 
     union DenoiserConfiguration
     {
-        static constexpr uint32_t kCount = FFX_API_CONFIGURE_DENOISER_KEY_DISOCCLUSION_THRESHOLD;
+        static constexpr int kFirstKey = (int)FFX_API_CONFIGURE_DENOISER_KEY_CROSS_BILATERAL_NORMAL_STRENGTH;
+        static constexpr int kLastKey = (int)FFX_API_CONFIGURE_DENOISER_KEY_DISOCCLUSION_THRESHOLD;
+        static constexpr uint32_t kCount = (uint32_t)(kLastKey - kFirstKey + 1);
 
-        // Ordered by FfxApiConfigureDenoiserKey. FidelityFX denoiser keys are 1-based;
-        // local array indices are 0-based. Keep both conversion paths symmetric so
-        // SetDefaultConfiguration() never queries/configures key 0.
+        static_assert(kFirstKey <= kLastKey, "Unexpected FidelityFX denoiser key ordering");
+
+        // Ordered by FfxApiConfigureDenoiserKey. FidelityFX denoiser keys are not local
+        // array indices, so keep conversion centralized and symmetric. This prevents
+        // SetDefaultConfiguration() from ever querying/configuring a non-existent key 0
+        // while still surviving future SDKs that change the first enum value.
         struct
         {
             float m_CrossBilateralNormalStrength;
@@ -45,13 +50,13 @@ class FSRDFeatureDx12 : public FSR31FeatureDx12
 
         static int GetKeyIndex(FfxApiConfigureDenoiserKey key) 
         {
-            return std::clamp((int)key - 1, 0, (int)DenoiserConfiguration::kCount - 1);
+            return std::clamp((int)key, kFirstKey, kLastKey) - kFirstKey;
         }
 
         static FfxApiConfigureDenoiserKey GetIndexKey(int index)
         {
             index = std::clamp(index, 0, (int)DenoiserConfiguration::kCount - 1);
-            return static_cast<FfxApiConfigureDenoiserKey>(index + 1);
+            return static_cast<FfxApiConfigureDenoiserKey>(index + kFirstKey);
         }
 
         float& GetMember(int index) { return AsArray[std::clamp(index, 0, (int)DenoiserConfiguration::kCount - 1)]; }
@@ -59,23 +64,23 @@ class FSRDFeatureDx12 : public FSR31FeatureDx12
         float& GetMember(FfxApiConfigureDenoiserKey key) { return AsArray[GetKeyIndex(key)]; }
     };
 
-    ffxContext _pDenoiserCtx;
-    ffxCreateContextDescDenoiser _denoiserCtxDesc;
-    DenoiserConfiguration _denoiserSettings;
-    bool _isMode2;
+    ffxContext _pDenoiserCtx = nullptr;
+    ffxCreateContextDescDenoiser _denoiserCtxDesc {};
+    DenoiserConfiguration _denoiserSettings {};
+    bool _isMode2 = false;
 
     static bool s_isHWDepth;
     static bool s_isRoughnessPacked;
 
-    FSRDConvDesc _convDesc;
-    DirectX::XMFLOAT3 _lastCamPos; // Last world space camera position
+    FSRDConvDesc _convDesc {};
+    DirectX::XMFLOAT3 _lastCamPos {}; // Last world space camera position
 
     // Matrices
-    DirectX::XMMATRIX _invViewMatrix;   // Camera rotation and translation
-    DirectX::XMMATRIX _viewMatrix;      // World to camera space
-    DirectX::XMMATRIX _prevViewMatrix;  // Last world to camera space
-    DirectX::XMMATRIX _projMatrix;      // Perspective projection matrix
-    bool _isRightHanded;                // True if the camera matrix is right handed
+    DirectX::XMMATRIX _invViewMatrix = DirectX::XMMatrixIdentity();   // Camera rotation and translation
+    DirectX::XMMATRIX _viewMatrix = DirectX::XMMatrixIdentity();      // World to camera space
+    DirectX::XMMATRIX _prevViewMatrix = DirectX::XMMatrixIdentity();  // Last world to camera space
+    DirectX::XMMATRIX _projMatrix = DirectX::XMMatrixIdentity();      // Perspective projection matrix
+    bool _isRightHanded = false;                                      // True if the camera matrix is right handed
 
     std::unique_ptr<FSRDPreprocessor_Dx12> FSRDConvShader;
 
