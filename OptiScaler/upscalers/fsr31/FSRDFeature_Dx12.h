@@ -28,7 +28,9 @@ class FSRDFeatureDx12 : public FSR31FeatureDx12
     {
         static constexpr uint32_t kCount = FFX_API_CONFIGURE_DENOISER_KEY_DISOCCLUSION_THRESHOLD;
 
-        // Ordered by FfxApiConfigureDenoiserKey
+        // Ordered by FfxApiConfigureDenoiserKey. FidelityFX denoiser keys are 1-based;
+        // local array indices are 0-based. Keep both conversion paths symmetric so
+        // SetDefaultConfiguration() never queries/configures key 0.
         struct
         {
             float m_CrossBilateralNormalStrength;
@@ -43,16 +45,16 @@ class FSRDFeatureDx12 : public FSR31FeatureDx12
 
         static int GetKeyIndex(FfxApiConfigureDenoiserKey key) 
         {
-            return std::clamp((int) key - 1, 0, (int)DenoiserConfiguration::kCount);
+            return std::clamp((int)key - 1, 0, (int)DenoiserConfiguration::kCount - 1);
         }
 
         static FfxApiConfigureDenoiserKey GetIndexKey(int index)
         {
-            index = std::clamp(index, 0, (int) DenoiserConfiguration::kCount);
-            return static_cast<FfxApiConfigureDenoiserKey>(index);
+            index = std::clamp(index, 0, (int)DenoiserConfiguration::kCount - 1);
+            return static_cast<FfxApiConfigureDenoiserKey>(index + 1);
         }
 
-        float& GetMember(int index) { return AsArray[index]; }
+        float& GetMember(int index) { return AsArray[std::clamp(index, 0, (int)DenoiserConfiguration::kCount - 1)]; }
 
         float& GetMember(FfxApiConfigureDenoiserKey key) { return AsArray[GetKeyIndex(key)]; }
     };
