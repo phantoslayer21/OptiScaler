@@ -66,7 +66,10 @@ function Find-MSBuild {
         throw "MSBuildPath was provided but does not exist: $ExplicitPath"
     }
 
-    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    $programFilesX86 = [Environment]::GetFolderPath('ProgramFilesX86')
+    $programFiles = [Environment]::GetFolderPath('ProgramFiles')
+
+    $vswhere = Join-Path $programFilesX86 'Microsoft Visual Studio\Installer\vswhere.exe'
     if (Test-Path -LiteralPath $vswhere) {
         $path = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find 'MSBuild\Current\Bin\MSBuild.exe' | Select-Object -First 1
         if ($path -and (Test-Path -LiteralPath $path)) {
@@ -74,14 +77,15 @@ function Find-MSBuild {
         }
     }
 
-    $fallbacks = @(
-        Join-Path ${env:ProgramFiles} 'Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe',
-        Join-Path ${env:ProgramFiles} 'Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\MSBuild.exe',
-        Join-Path ${env:ProgramFiles} 'Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe',
-        Join-Path ${env:ProgramFiles} 'Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe'
+    $fallbackRelativePaths = @(
+        'Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe',
+        'Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\MSBuild.exe',
+        'Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe',
+        'Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe'
     )
 
-    foreach ($path in $fallbacks) {
+    foreach ($relativePath in $fallbackRelativePaths) {
+        $path = Join-Path $programFiles $relativePath
         if (Test-Path -LiteralPath $path) {
             return $path
         }
@@ -163,7 +167,7 @@ if (-not $NoPackageCopy) {
     New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
 
     if (Test-Path -LiteralPath $stagedDir) {
-        Copy-Item -LiteralPath (Join-Path $stagedDir '*') -Destination $artifactDir -Recurse -Force
+        Copy-Item -Path (Join-Path $stagedDir '*') -Destination $artifactDir -Recurse -Force
     } else {
         Copy-Item -LiteralPath $dll -Destination $artifactDir -Force
     }
