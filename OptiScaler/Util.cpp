@@ -893,6 +893,119 @@ void Util::GetDeviceRemovedReason(ID3D12Device* pDevice)
     default:
         LOG_ERROR("Device removed reason: Unknown ({:X})", (UINT) reason);
     }
+
+    DumpDred(pDevice);
+}
+
+// DRED ([Hotfix] DredDiagnostics=true): enabled before the game's D3D12 device is created (D3D12_Hooks), dumped once
+// when OptiScaler sees the device removed. Shows which command lists were running on the GPU and how far each got,
+// and the GPU page fault if there was one.
+bool Util::DredRequested()
+{
+    auto value = Config::Instance()->GetRawValue("Hotfix", "DredDiagnostics");
+    return value.has_value() && (*value == "true" || *value == "1");
+}
+
+void Util::EnableDred()
+{
+    ID3D12DeviceRemovedExtendedDataSettings1* settings = nullptr;
+    if (D3D12GetDebugInterface(IID_PPV_ARGS(&settings)) != S_OK || settings == nullptr)
+    {
+        LOG_WARN("DRED: settings interface not available");
+        return;
+    }
+
+    settings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+    settings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+    settings->SetBreadcrumbContextEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+    settings->Release();
+    LOG_WARN("DRED: auto breadcrumbs, breadcrumb contexts and page faults enabled for new D3D12 devices");
+}
+
+static const char* DredOpName(D3D12_AUTO_BREADCRUMB_OP op)
+{
+    static const char* names[] = { "SetMarker", "BeginEvent", "EndEvent", "DrawInstanced", "DrawIndexedInstanced",
+                                   "ExecuteIndirect", "Dispatch", "CopyBufferRegion", "CopyTextureRegion",
+                                   "CopyResource", "CopyTiles", "ResolveSubresource", "ClearRenderTargetView",
+                                   "ClearUnorderedAccessView", "ClearDepthStencilView", "ResourceBarrier",
+                                   "ExecuteBundle", "Present", "ResolveQueryData", "BeginSubmission",
+                                   "EndSubmission", "DecodeFrame", "ProcessFrames", "AtomicCopyBufferUint",
+                                   "AtomicCopyBufferUint64", "ResolveSubresourceRegion", "WriteBufferImmediate",
+                                   "DecodeFrame1", "SetProtectedResourceSession", "DecodeFrame2", "ProcessFrames1",
+                                   "BuildRaytracingAccelerationStructure",
+                                   "EmitRaytracingAccelerationStructurePostbuildInfo",
+                                   "CopyRaytracingAccelerationStructure", "DispatchRays", "InitializeMetaCommand",
+                                   "ExecuteMetaCommand", "EstimateMotion", "ResolveMotionVectorHeap",
+                                   "SetPipelineState1", "InitializeExtensionCommand", "ExecuteExtensionCommand",
+                                   "DispatchMesh", "EncodeFrame", "ResolveEncoderOutputMetadata", "Barrier",
+                                   "BeginCommandList", "DispatchGraph", "SetProgram" };
+    return (size_t) op < std::size(names) ? names[op] : "?";
+}
+
+void Util::DumpDred(ID3D12Device* pDevice)
+{
+    static std::atomic<bool> dumped = false;
+    if (pDevice == nullptr || !DredRequested() || dumped.exchange(true))
+        return;
+
+    ID3D12DeviceRemovedExtendedData1* dred = nullptr;
+    if (pDevice->QueryInterface(IID_PPV_ARGS(&dred)) != S_OK || dred == nullptr)
+    {
+        LOG_ERROR("DRED: not available on this device (was DredDiagnostics on before the device was created?)");
+        return;
+    }
+
+    D3D12_DRED_AUTO_BREADCRUMBS_OUTPUT1 crumbs {};
+    if (dred->GetAutoBreadcrumbsOutput1(&crumbs) == S_OK)
+    {
+        int index = 0;
+        for (auto node = crumbs.pHeadAutoBreadcrumbNode; node != nullptr && index < 64; node = node->pNext, index++)
+        {
+            const UINT done = node->pLastBreadcrumbValue != nullptr ? *node->pLastBreadcrumbValue : 0;
+            if (done >= node->BreadcrumbCount)
+                continue; // finished on the GPU
+
+            LOG_ERROR("DRED: command list {} (queue {}, list {}): {} of {} operations completed",
+                      index, node->pCommandQueueDebugNameA ? node->pCommandQueueDebugNameA : "unnamed",
+                      node->pCommandListDebugNameA ? node->pCommandListDebugNameA : "unnamed", done,
+                      node->BreadcrumbCount);
+
+            const UINT first = done > 8 ? done - 8 : 0;
+            const UINT last = std::min(node->BreadcrumbCount, done + 8);
+            for (UINT i = first; i < last; i++)
+            {
+                std::string context;
+                for (UINT c = 0; c < node->BreadcrumbContextsCount; c++)
+                {
+                    if (node->pBreadcrumbContexts[c].BreadcrumbIndex == i && node->pBreadcrumbContexts[c].pContextString)
+                        context = wstring_to_string(node->pBreadcrumbContexts[c].pContextString);
+                }
+
+                LOG_ERROR("DRED:   {} op {} {}{}{}", i == done ? "->" : "  ", i, DredOpName(node->pCommandHistory[i]),
+                          context.empty() ? "" : "  ", context);
+            }
+        }
+    }
+    else
+    {
+        LOG_ERROR("DRED: no breadcrumb output");
+    }
+
+    D3D12_DRED_PAGE_FAULT_OUTPUT1 fault {};
+    if (dred->GetPageFaultAllocationOutput1(&fault) == S_OK)
+    {
+        LOG_ERROR("DRED: page fault VA {:X}", (uint64_t) fault.PageFaultVA);
+        int n = 0;
+        for (auto a = fault.pHeadExistingAllocationNode; a != nullptr && n < 16; a = a->pNext, n++)
+            LOG_ERROR("DRED:   existing allocation at the VA: {} (type {})",
+                      a->ObjectNameA ? a->ObjectNameA : "unnamed", (int) a->AllocationType);
+        n = 0;
+        for (auto a = fault.pHeadRecentFreedAllocationNode; a != nullptr && n < 16; a = a->pNext, n++)
+            LOG_ERROR("DRED:   recently freed allocation at the VA: {} (type {})",
+                      a->ObjectNameA ? a->ObjectNameA : "unnamed", (int) a->AllocationType);
+    }
+
+    dred->Release();
 }
 
 void Util::LoadProxyLibrary(const std::wstring& name, const std::wstring& optiPath, const std::wstring& overridePath,

@@ -1455,6 +1455,13 @@ static HRESULT hkD3D12CreateDevice(IUnknown* pAdapter, D3D_FEATURE_LEVEL Minimum
 #endif
     IdentifyGpu::updateD3d12Capabilities(o_D3D12CreateDevice);
 
+    static bool dredEnabled = false;
+    if (!dredEnabled && Util::DredRequested())
+    {
+        Util::EnableDred();
+        dredEnabled = true;
+    }
+
     DXGI_ADAPTER_DESC desc {};
     std::wstring szName;
     bool nonPrimaryGpu = false;
