@@ -364,7 +364,7 @@ void IFeature_Dx11::ReadDetailedGpuTimes(void* deviceContextVoid, std::vector<De
 
     // Do not call ReadGpuTime twice for shaders
     if (lastUpscalerTime)
-        detailedGpuTimes.emplace_back(DetailedGpuTime { ShortName(), lastUpscalerTime.value(), true });
+        detailedGpuTimes.emplace_back(DetailedGpuTime { ShownShortName(), lastUpscalerTime.value(), true });
 
     if (lastRcasTime)
         detailedGpuTimes.emplace_back(DetailedGpuTime { RCAS->Name(), lastRcasTime.value(), true });

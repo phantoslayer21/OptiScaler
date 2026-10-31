@@ -264,6 +264,8 @@ bool FFXFeatureVk::InitFFX(const NVSDK_NGX_Parameter* InParameters)
         Config::Instance()->FfxUpscalerIndexFor(_customUpscaler != nullptr ? _customUpscaler->name : "");
     _name = "FSR";
     parse_version(versions.names[upscalerIndex.value_or_default()]);
+    _displayName =
+        _customUpscaler != nullptr ? VersionDisplayName(versions.names[upscalerIndex.value_or_default()]) : "";
 
     SetInit(true);
 

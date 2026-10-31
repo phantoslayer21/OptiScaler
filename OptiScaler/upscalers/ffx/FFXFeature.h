@@ -17,6 +17,19 @@ class FFXFeature : public virtual IFeature
   protected:
     std::string _name = "FSR";
 
+    // A custom upscaler's name for the chosen version (the text before "##"), empty for the regular FFX ones
+    std::string _displayName;
+
+    static std::string VersionDisplayName(const char* versionName)
+    {
+        std::string name = versionName != nullptr ? versionName : "";
+
+        if (auto hidden = name.find("##"); hidden != std::string::npos)
+            name.resize(hidden);
+
+        return name;
+    }
+
     ffxContext _context = nullptr;
     ffxCreateContextDescUpscale _contextDesc = {};
 
@@ -89,6 +102,7 @@ class FFXFeature : public virtual IFeature
 
   public:
     feature_version Version() override { return _version; }
+    std::string DisplayName() override { return _displayName; }
 
     // Fills the custom upscaler's list when given, the regular one otherwise
     static bool QueryVersionsDx12(ID3D12Device* device, CustomFfxModule* custom = nullptr);

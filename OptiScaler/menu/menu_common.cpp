@@ -592,6 +592,10 @@ inline std::string StrFmt(const char* fmt, ...)
 
 static std::string NameWithVersion(IFeature* feature)
 {
+    // A custom upscaler goes by its own name for the chosen version, not by the FSR version parsed from it
+    if (auto name = feature->DisplayName(); !name.empty())
+        return name;
+
     const auto version = feature->Version();
     return StrFmt("%s %u.%u.%u", feature->ShortName().c_str(), version.major, version.minor, version.patch);
 }
@@ -3593,8 +3597,9 @@ void MenuCommon::RenderUpscalerStateMessage(RenderMenuContext& ctx)
             ImGui::SetWindowFontScale(menuResScale * 2.0f);
 
         ImGui::PushTextWrapPos(0.0f);
+        const auto customName = currentFeature->DisplayName();
         ImGui::Text("%s active, but currently not used by the game\nPlease load into the game",
-                    currentFeature->Name().c_str());
+                    customName.empty() ? currentFeature->Name().c_str() : customName.c_str());
         ImGui::PopTextWrapPos();
 
         if (config->UseHQFont.value_or_default())
@@ -3794,16 +3799,20 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
             ImGui::Spacing();
 
             const int ffxIndex = upscalerIndex.value_or_default();
-            auto currentName =
-                ffxIndex >= 0 && ffxIndex < versions->names.size() ? StrFmt("FSR %s", versions->names[ffxIndex]) : "";
+            // A custom upscaler's versions carry its own names (no "FSR " in front) and the box carries its name
+            const char* prefix = customName.empty() ? "FSR " : "";
+            auto currentName = ffxIndex >= 0 && ffxIndex < versions->names.size()
+                                   ? StrFmt("%s%s", prefix, versions->names[ffxIndex])
+                                   : "";
+            const auto comboLabel = customName.empty() ? std::string("FFX Upscaler") : customName + "##FfxVersions";
 
             ImGui::PushItemWidth(150.0f * menuResScale);
 
-            if (ImGui::BeginCombo("FFX Upscaler", currentName.c_str()))
+            if (ImGui::BeginCombo(comboLabel.c_str(), currentName.c_str()))
             {
                 for (auto n : FfxVersionsNewestFirst(*versions))
                 {
-                    if (ImGui::Selectable(StrFmt("FSR %s##%d", versions->names[n], n).c_str(), ffxIndex == n) &&
+                    if (ImGui::Selectable(StrFmt("%s%s##%d", prefix, versions->names[n], n).c_str(), ffxIndex == n) &&
                         ffxIndex != n)
                     {
                         upscalerIndex = n;
@@ -3817,12 +3826,17 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
 
             ImGui::PopItemWidth();
 
-            ShowTooltip("List of upscalers reported by FFX SDK");
+            ShowTooltip(customName.empty() ? "List of upscalers reported by FFX SDK"
+                                           : "List of versions reported by the custom upscaler");
         }
 
         auto majorFsrVersion = currentFeature->Version().major;
 
-        if (majorFsrVersion >= 4)
+        // FSR's own settings (FSR 4 color space / presets / models, debug view, FSR 3.1 presets, FSR 3 tuning) are for
+        // AMD's upscalers; a custom upscaler is not FSR, whatever version its names parse as
+        const bool fsrPanels = customName.empty();
+
+        if (fsrPanels && majorFsrVersion >= 4)
         {
             ImGui::Spacing();
 
@@ -3967,7 +3981,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
             }
         }
 
-        if (majorFsrVersion >= 3)
+        if (fsrPanels && majorFsrVersion >= 3)
         {
             ImGui::Spacing();
 
@@ -4017,7 +4031,7 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
             }
         }
 
-        if (currentFeature->Version() >= feature_version { 3, 1, 1 } &&
+        if (fsrPanels && currentFeature->Version() >= feature_version { 3, 1, 1 } &&
             currentFeature->Version() < feature_version { 4, 0, 0 })
         {
             ImGui::Spacing();
@@ -9802,7 +9816,7 @@ void MenuCommon::RenderMainMenuTabs(RenderMenuContext& ctx)
             const float renderWidth = (float) currentFeature->RenderWidth();
             const float upscaleRatio = renderWidth > 0.0f ? (float) currentFeature->TargetWidth() / renderWidth : 0.0f;
 
-            ImGui::TextColored(StatusOk(), "%s (%.2f)", currentFeature->ShortName().c_str(), upscaleRatio);
+            ImGui::TextColored(StatusOk(), "%s (%.2f)", currentFeature->ShownShortName().c_str(), upscaleRatio);
         }
 
         ImGui::TextDisabled("FG");

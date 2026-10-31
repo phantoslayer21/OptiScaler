@@ -580,6 +580,8 @@ bool FFXFeatureDx12::InitFFX(const NVSDK_NGX_Parameter* InParameters)
             upscalerIndex.set_volatile_value(0);
 
         parse_version(versions.names[upscalerIndex.value_or_default()]);
+        _displayName =
+            _customUpscaler != nullptr ? VersionDisplayName(versions.names[upscalerIndex.value_or_default()]) : "";
 
         ffxOverrideVersion override = { 0 };
         override.header.type = FFX_API_DESC_TYPE_OVERRIDE_VERSION;

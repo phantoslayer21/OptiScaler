@@ -119,6 +119,14 @@ class IFeature
     virtual API Api() const = 0;
     std::string Name() const { return UpscalerDisplayName(GetUpscalerType()); };
     std::string ShortName() const { return UpscalerShortName(GetUpscalerType()); }; // Without the version
+    // A custom upscaler's own name for the running version, empty when it goes by Name() / ShortName()
+    virtual std::string DisplayName() { return {}; }
+    // ShortName(), or the custom upscaler's own name when it has one
+    std::string ShownShortName()
+    {
+        auto name = DisplayName();
+        return name.empty() ? ShortName() : name;
+    }
     virtual std::optional<double> ReadUpscalerTime(void* commandQueue) { return std::nullopt; }
     virtual void ReadDetailedGpuTimes(void* commandQueue, std::vector<DetailedGpuTime>& detailedGpuTimes) {};
 
