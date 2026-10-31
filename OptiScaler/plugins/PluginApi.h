@@ -23,4 +23,10 @@ class PluginApi
 
     // Draws a registered tab inside of the menu, colorMap adjusts colors for the HDR menu
     static void DrawTab(size_t index, float menuScale, ImVec4 (*colorMap)(const ImVec4&));
+
+    // Draws the cards plugins added to the Custom tab, returns false when there are none
+    static bool DrawCustomCards(float menuScale, ImVec4 (*colorMap)(const ImVec4&));
+
+    // The upscaler a plugin reported in the last half second (ReportUpscaler), false when there is none
+    static bool ReportedUpscaler(std::string* name, float* gpuTimeMs);
 };

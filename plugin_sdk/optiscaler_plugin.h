@@ -42,7 +42,7 @@ extern "C"
 {
 #endif
 
-#define OPTI_PLUGIN_API_VERSION 1
+#define OPTI_PLUGIN_API_VERSION 2
 
     // Handle of the calling plugin, given to OptiPluginInit
     typedef struct OptiPlugin OptiPlugin;
@@ -135,6 +135,17 @@ extern "C"
 
         // Writes to the OptiScaler log, prefixed with the plugin name
         void (*Log)(OptiPlugin* plugin, OptiLogLevel level, const char* message);
+
+        // Version 2 -------------------------------------------------------------------------------------------
+
+        // Adds a card at the top of the Custom tab (the tab the menu opens on), shown whatever state the
+        // upscaler is in. The callback draws the card's content, OptiScaler draws the card with its title.
+        bool (*RegisterCustomCard)(OptiPlugin* plugin, const char* title, OptiDrawTabFn draw, void* userData);
+        // An upscaler the plugin runs itself, outside of OptiScaler's upscalers (ray reconstruction for example):
+        // its name and the GPU time of its last frame in ms. Shown in the FPS overlay and the menu while none of
+        // OptiScaler's own upscalers is in use. Call it once per frame from any thread; a name that isn't reported
+        // for half a second is no longer shown.
+        void (*ReportUpscaler)(OptiPlugin* plugin, const char* name, float gpuTimeMs);
 
     } OptiPluginApi;
 

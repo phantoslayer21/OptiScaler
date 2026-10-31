@@ -31,7 +31,18 @@ struct PluginTab
 std::vector<std::unique_ptr<OptiPlugin>> _plugins;
 std::vector<HMODULE> _initedModules;
 std::vector<std::shared_ptr<PluginTab>> _tabs;
+std::vector<std::shared_ptr<PluginTab>> _cards; // Custom tab cards, name is the card title
 std::mutex _mutex;
+
+// The upscaler a plugin runs itself (ReportUpscaler)
+struct ReportedUpscalerState
+{
+    std::string name;
+    float gpuTimeMs = 0.0f;
+    ULONGLONG at = 0; // GetTickCount64 of the last report
+};
+ReportedUpscalerState _reported;
+std::mutex _reportedMutex;
 
 // State of the draw callback that is running, widgets do nothing without it
 struct TabDrawState
@@ -170,6 +181,39 @@ bool Api_RegisterTab(OptiPlugin* plugin, const char* name, const char* descripti
     LOG_INFO("[{}] Registered tab: {}", plugin->name, name);
 
     return true;
+}
+
+bool Api_RegisterCustomCard(OptiPlugin* plugin, const char* title, OptiDrawTabFn draw, void* userData)
+{
+    if (plugin == nullptr || title == nullptr || title[0] == '\0' || draw == nullptr)
+        return false;
+
+    auto card = std::make_shared<PluginTab>();
+    card->plugin = plugin;
+    card->name = title;
+    card->draw = draw;
+    card->userData = userData;
+
+    std::lock_guard<std::mutex> lock(_mutex);
+    _cards.push_back(std::move(card));
+
+    LOG_INFO("[{}] Registered Custom tab card: {}", plugin->name, title);
+
+    return true;
+}
+
+void Api_ReportUpscaler(OptiPlugin* plugin, const char* name, float gpuTimeMs)
+{
+    if (plugin == nullptr || name == nullptr || name[0] == '\0')
+        return;
+
+    std::lock_guard<std::mutex> lock(_reportedMutex);
+
+    if (_reported.name != name)
+        _reported.name = name;
+
+    _reported.gpuTimeMs = std::isfinite(gpuTimeMs) && gpuTimeMs > 0.0f ? gpuTimeMs : 0.0f;
+    _reported.at = GetTickCount64();
 }
 
 void Api_Section(const char* title)
@@ -463,7 +507,75 @@ const OptiPluginApi _api = {
     .SaveSettings = Api_SaveSettings,
 
     .Log = Api_Log,
+
+    .RegisterCustomCard = Api_RegisterCustomCard,
+    .ReportUpscaler = Api_ReportUpscaler,
 };
+
+// Runs one tab or card callback with the widget state set up, a crash in it disables that entry
+void DrawEntry(PluginTab& tab, float menuScale, ImVec4 (*colorMap)(const ImVec4&), bool asCard)
+{
+    _menuScale = menuScale;
+
+    if (tab.faulted)
+    {
+        ImGui::TextColored(colorMap(ImVec4(1.0f, 0.4f, 0.4f, 1.0f)), "%s",
+                           asCard ? "A plugin crashed while drawing its card and it was disabled.\nCheck the log for details."
+                                  : "This plugin crashed while drawing its tab and was disabled.\nCheck the log for details.");
+        return;
+    }
+
+    // Lock isn't held while the plugin runs, it can register more tabs from here
+    TabDrawState state;
+    state.colorMap = colorMap;
+
+    // A card's content goes into a card with its title, a tab starts its cards itself
+    if (asCard)
+        state.card.emplace(tab.name.c_str());
+
+    ImGuiErrorRecoveryState recovery;
+    ImGui::ErrorRecoveryStoreState(&recovery);
+
+    ImGui::PushID(tab.plugin->name.c_str());
+    ImGui::PushID(tab.name.c_str());
+    ImGui::PushItemWidth(220.0f * menuScale);
+
+    _draw = &state;
+    const bool finished = CallDraw(tab.draw, tab.userData);
+    _draw = nullptr;
+
+    if (!finished)
+    {
+        LOG_ERROR("[{}] Crashed while drawing {} {}, disabling it", tab.plugin->name, asCard ? "card" : "tab", tab.name);
+        tab.faulted = true;
+
+        // Closes whatever was left open when the plugin crashed, popups of a combo for example.
+        // Also pops the IDs and the disabled state from above, but not the item width.
+        auto& io = ImGui::GetIO();
+        const bool enableAssert = io.ConfigErrorRecoveryEnableAssert;
+        const bool enableTooltip = io.ConfigErrorRecoveryEnableTooltip;
+        io.ConfigErrorRecoveryEnableAssert = false;
+        io.ConfigErrorRecoveryEnableTooltip = false;
+
+        ImGui::ErrorRecoveryTryToRecoverState(&recovery);
+
+        io.ConfigErrorRecoveryEnableAssert = enableAssert;
+        io.ConfigErrorRecoveryEnableTooltip = enableTooltip;
+
+        ImGui::PopItemWidth();
+        state.card.reset();
+        return;
+    }
+
+    if (state.disabled)
+        ImGui::EndDisabled();
+
+    state.card.reset();
+
+    ImGui::PopItemWidth();
+    ImGui::PopID();
+    ImGui::PopID();
+}
 } // namespace
 
 void PluginApi::InitPlugin(HMODULE module, PFN_OptiPluginInit init, const std::filesystem::path& path)
@@ -516,6 +628,7 @@ void PluginApi::InitPlugin(HMODULE module, PFN_OptiPluginInit init, const std::f
 
     std::lock_guard<std::mutex> lock(_mutex);
     std::erase_if(_tabs, [plugin](const auto& tab) { return tab->plugin == plugin; });
+    std::erase_if(_cards, [plugin](const auto& card) { return card->plugin == plugin; });
 }
 
 std::vector<PluginApi::TabInfo> PluginApi::GetTabs()
@@ -543,59 +656,36 @@ void PluginApi::DrawTab(size_t index, float menuScale, ImVec4 (*colorMap)(const 
         tab = _tabs[index];
     }
 
-    _menuScale = menuScale;
+    DrawEntry(*tab, menuScale, colorMap, false);
+}
 
-    if (tab->faulted)
+bool PluginApi::DrawCustomCards(float menuScale, ImVec4 (*colorMap)(const ImVec4&))
+{
+    std::vector<std::shared_ptr<PluginTab>> cards;
+
     {
-        ImGui::TextColored(colorMap(ImVec4(1.0f, 0.4f, 0.4f, 1.0f)), "%s",
-                           "This plugin crashed while drawing its tab and was disabled.\nCheck the log for details.");
-        return;
+        std::lock_guard<std::mutex> lock(_mutex);
+        cards = _cards;
     }
 
-    // Lock isn't held while the plugin runs, it can register more tabs from here
-    TabDrawState state;
-    state.colorMap = colorMap;
+    for (const auto& card : cards)
+        DrawEntry(*card, menuScale, colorMap, true);
 
-    ImGuiErrorRecoveryState recovery;
-    ImGui::ErrorRecoveryStoreState(&recovery);
+    return !cards.empty();
+}
 
-    ImGui::PushID(tab->plugin->name.c_str());
-    ImGui::PushID(tab->name.c_str());
-    ImGui::PushItemWidth(220.0f * menuScale);
+bool PluginApi::ReportedUpscaler(std::string* name, float* gpuTimeMs)
+{
+    std::lock_guard<std::mutex> lock(_reportedMutex);
 
-    _draw = &state;
-    const bool finished = CallDraw(tab->draw, tab->userData);
-    _draw = nullptr;
+    if (_reported.at == 0 || GetTickCount64() - _reported.at > 500)
+        return false;
 
-    if (!finished)
-    {
-        LOG_ERROR("[{}] Crashed while drawing tab {}, disabling it", tab->plugin->name, tab->name);
-        tab->faulted = true;
+    if (name != nullptr)
+        *name = _reported.name;
 
-        // Closes whatever was left open when the plugin crashed, popups of a combo for example.
-        // Also pops the IDs and the disabled state from above, but not the item width.
-        auto& io = ImGui::GetIO();
-        const bool enableAssert = io.ConfigErrorRecoveryEnableAssert;
-        const bool enableTooltip = io.ConfigErrorRecoveryEnableTooltip;
-        io.ConfigErrorRecoveryEnableAssert = false;
-        io.ConfigErrorRecoveryEnableTooltip = false;
+    if (gpuTimeMs != nullptr)
+        *gpuTimeMs = _reported.gpuTimeMs;
 
-        ImGui::ErrorRecoveryTryToRecoverState(&recovery);
-
-        io.ConfigErrorRecoveryEnableAssert = enableAssert;
-        io.ConfigErrorRecoveryEnableTooltip = enableTooltip;
-
-        ImGui::PopItemWidth();
-        state.card.reset();
-        return;
-    }
-
-    if (state.disabled)
-        ImGui::EndDisabled();
-
-    state.card.reset();
-
-    ImGui::PopItemWidth();
-    ImGui::PopID();
-    ImGui::PopID();
+    return true;
 }
