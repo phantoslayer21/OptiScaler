@@ -313,12 +313,22 @@ void InstallRoutes(PluginStreamlineRoutes& entry)
 
     LOG_INFO("[{}] Installed {} Streamline route(s) on interposer {}.{}.{}", entry.plugin->name, pending.size(),
              _slVersion[0], _slVersion[1], _slVersion[2]);
+}
 
-    if (entry.hooked != nullptr && !pending.empty() &&
-        !CallStreamlineHooked(entry.hooked, _slModule, _slVersion, entry.hookedUserData))
+// Tells one plugin which interposer is hooked, caller holds _slMutex. The plugin may register its routes from here.
+void NotifyHooked(OptiPlugin* plugin)
+{
+    auto* entry = FindStreamlineRoutes(plugin);
+    if (entry == nullptr || entry->hooked == nullptr || _slModule == nullptr)
+        return;
+
+    auto hooked = entry->hooked;
+    auto userData = entry->hookedUserData;
+    if (!CallStreamlineHooked(hooked, _slModule, _slVersion, userData))
     {
-        LOG_ERROR("[{}] Crashed in its Streamline callback, it is not called again", entry.plugin->name);
-        entry.hooked = nullptr;
+        LOG_ERROR("[{}] Crashed in its Streamline callback, it is not called again", plugin->name);
+        if ((entry = FindStreamlineRoutes(plugin)) != nullptr)
+            entry->hooked = nullptr;
     }
 }
 
@@ -380,6 +390,9 @@ bool Api_SetStreamlineCallback(OptiPlugin* plugin, OptiStreamlineHookedFn hooked
 
     entry->hooked = hooked;
     entry->hookedUserData = userData;
+
+    // The interposer may already be hooked (games that link it at startup)
+    NotifyHooked(plugin);
     return true;
 }
 
@@ -868,6 +881,14 @@ void PluginApi::OnInterposerHooked(HMODULE module, uint32_t major, uint32_t mino
     _slVersion[0] = major;
     _slVersion[1] = minor;
     _slVersion[2] = patch;
+
+    // Callbacks first (a plugin checks the version and registers its routes there), then every registered route
+    std::vector<OptiPlugin*> plugins;
+    for (auto& entry : _slRoutes)
+        plugins.push_back(entry.plugin);
+
+    for (auto* plugin : plugins)
+        NotifyHooked(plugin);
 
     for (auto& entry : _slRoutes)
         InstallRoutes(entry);
