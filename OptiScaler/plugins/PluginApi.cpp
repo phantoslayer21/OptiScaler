@@ -9,6 +9,9 @@
 
 #include <charconv>
 
+#include <proxies/KernelBase_Proxy.h>
+#include "detours/detours.h"
+
 struct OptiPlugin
 {
     std::string name;
@@ -43,6 +46,28 @@ struct ReportedUpscalerState
 };
 ReportedUpscalerState _reported;
 std::mutex _reportedMutex;
+
+// Streamline functions plugins handle themselves (RegisterStreamlineRoutes)
+struct StreamlineRoute
+{
+    std::string exportName;
+    void* handler = nullptr;
+    void** next = nullptr;
+    bool installed = false;
+};
+
+struct PluginStreamlineRoutes
+{
+    OptiPlugin* plugin = nullptr;
+    std::vector<StreamlineRoute> routes;
+    OptiStreamlineHookedFn hooked = nullptr;
+    void* hookedUserData = nullptr;
+};
+
+std::vector<PluginStreamlineRoutes> _slRoutes;
+std::recursive_mutex _slMutex;
+HMODULE _slModule = nullptr; // interposer the routes are installed on, null while none is hooked
+uint32_t _slVersion[3] = {};
 
 // State of the draw callback that is running, widgets do nothing without it
 struct TabDrawState
@@ -214,6 +239,148 @@ void Api_ReportUpscaler(OptiPlugin* plugin, const char* name, float gpuTimeMs)
 
     _reported.gpuTimeMs = std::isfinite(gpuTimeMs) && gpuTimeMs > 0.0f ? gpuTimeMs : 0.0f;
     _reported.at = GetTickCount64();
+}
+
+PluginStreamlineRoutes* FindStreamlineRoutes(OptiPlugin* plugin)
+{
+    for (auto& entry : _slRoutes)
+    {
+        if (entry.plugin == plugin)
+            return &entry;
+    }
+
+    return nullptr;
+}
+
+bool CallStreamlineHooked(OptiStreamlineHookedFn hooked, HMODULE module, const uint32_t* version, void* userData)
+{
+    __try
+    {
+        hooked(module, version[0], version[1], version[2], userData);
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
+// Installs the routes of one plugin on the hooked interposer, caller holds _slMutex
+void InstallRoutes(PluginStreamlineRoutes& entry)
+{
+    if (_slModule == nullptr)
+        return;
+
+    std::vector<StreamlineRoute*> pending;
+
+    DetourTransactionBegin();
+    DetourUpdateThread(GetCurrentThread());
+
+    for (auto& route : entry.routes)
+    {
+        if (route.installed)
+            continue;
+
+        auto target = reinterpret_cast<void*>(KernelBaseProxy::GetProcAddress_()(_slModule, route.exportName.c_str()));
+        if (target == nullptr)
+        {
+            LOG_WARN("[{}] Streamline route {}: not exported by this interposer", entry.plugin->name, route.exportName);
+            continue;
+        }
+
+        *route.next = target;
+        if (DetourAttach(route.next, route.handler) != NO_ERROR)
+        {
+            LOG_ERROR("[{}] Streamline route {}: attach failed", entry.plugin->name, route.exportName);
+            *route.next = nullptr;
+            continue;
+        }
+
+        pending.push_back(&route);
+    }
+
+    auto result = DetourTransactionCommit();
+    if (result != NO_ERROR)
+    {
+        LOG_ERROR("[{}] Streamline routes: commit failed {:X}", entry.plugin->name, result);
+        for (auto* route : pending)
+            *route->next = nullptr;
+        return;
+    }
+
+    for (auto* route : pending)
+        route->installed = true;
+
+    LOG_INFO("[{}] Installed {} Streamline route(s) on interposer {}.{}.{}", entry.plugin->name, pending.size(),
+             _slVersion[0], _slVersion[1], _slVersion[2]);
+
+    if (entry.hooked != nullptr && !pending.empty() &&
+        !CallStreamlineHooked(entry.hooked, _slModule, _slVersion, entry.hookedUserData))
+    {
+        LOG_ERROR("[{}] Crashed in its Streamline callback, it is not called again", entry.plugin->name);
+        entry.hooked = nullptr;
+    }
+}
+
+bool Api_RegisterStreamlineRoutes(OptiPlugin* plugin, const OptiStreamlineRoute* routes, uint32_t count)
+{
+    if (plugin == nullptr || routes == nullptr || count == 0)
+        return false;
+
+    std::vector<StreamlineRoute> copy;
+    for (uint32_t i = 0; i < count; i++)
+    {
+        const auto& route = routes[i];
+        if (route.exportName == nullptr || route.exportName[0] == '\0' || route.handler == nullptr ||
+            route.next == nullptr)
+        {
+            LOG_ERROR("[{}] Streamline route {} is invalid, none registered", plugin->name, i);
+            return false;
+        }
+
+        *route.next = nullptr;
+        copy.push_back({ route.exportName, route.handler, route.next, false });
+    }
+
+    std::lock_guard<std::recursive_mutex> lock(_slMutex);
+
+    auto* entry = FindStreamlineRoutes(plugin);
+    if (entry != nullptr && !entry->routes.empty())
+    {
+        LOG_ERROR("[{}] Streamline routes are already registered", plugin->name);
+        return false;
+    }
+
+    if (entry == nullptr)
+    {
+        _slRoutes.push_back({ plugin });
+        entry = &_slRoutes.back();
+    }
+
+    entry->routes = std::move(copy);
+    LOG_INFO("[{}] Registered {} Streamline route(s)", plugin->name, count);
+
+    InstallRoutes(*entry);
+    return true;
+}
+
+bool Api_SetStreamlineCallback(OptiPlugin* plugin, OptiStreamlineHookedFn hooked, void* userData)
+{
+    if (plugin == nullptr)
+        return false;
+
+    std::lock_guard<std::recursive_mutex> lock(_slMutex);
+
+    auto* entry = FindStreamlineRoutes(plugin);
+    if (entry == nullptr)
+    {
+        _slRoutes.push_back({ plugin });
+        entry = &_slRoutes.back();
+    }
+
+    entry->hooked = hooked;
+    entry->hookedUserData = userData;
+    return true;
 }
 
 void Api_Section(const char* title)
@@ -510,6 +677,9 @@ const OptiPluginApi _api = {
 
     .RegisterCustomCard = Api_RegisterCustomCard,
     .ReportUpscaler = Api_ReportUpscaler,
+
+    .RegisterStreamlineRoutes = Api_RegisterStreamlineRoutes,
+    .SetStreamlineCallback = Api_SetStreamlineCallback,
 };
 
 // Runs one tab or card callback with the widget state set up, a crash in it disables that entry
@@ -688,4 +858,55 @@ bool PluginApi::ReportedUpscaler(std::string* name, float* gpuTimeMs)
         *gpuTimeMs = _reported.gpuTimeMs;
 
     return true;
+}
+
+void PluginApi::OnInterposerHooked(HMODULE module, uint32_t major, uint32_t minor, uint32_t patch)
+{
+    std::lock_guard<std::recursive_mutex> lock(_slMutex);
+
+    _slModule = module;
+    _slVersion[0] = major;
+    _slVersion[1] = minor;
+    _slVersion[2] = patch;
+
+    for (auto& entry : _slRoutes)
+        InstallRoutes(entry);
+}
+
+void PluginApi::OnInterposerUnhooking()
+{
+    std::lock_guard<std::recursive_mutex> lock(_slMutex);
+
+    if (_slModule == nullptr)
+        return;
+
+    DetourTransactionBegin();
+    DetourUpdateThread(GetCurrentThread());
+
+    for (auto& entry : _slRoutes)
+    {
+        for (auto& route : entry.routes)
+        {
+            if (route.installed)
+                DetourDetach(route.next, route.handler);
+        }
+    }
+
+    auto result = DetourTransactionCommit();
+    if (result != NO_ERROR)
+        LOG_ERROR("Streamline routes: detach failed {:X}", result);
+
+    for (auto& entry : _slRoutes)
+    {
+        for (auto& route : entry.routes)
+        {
+            if (route.installed)
+            {
+                *route.next = nullptr;
+                route.installed = false;
+            }
+        }
+    }
+
+    _slModule = nullptr;
 }

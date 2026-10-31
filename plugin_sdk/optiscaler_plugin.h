@@ -42,13 +42,25 @@ extern "C"
 {
 #endif
 
-#define OPTI_PLUGIN_API_VERSION 2
+#define OPTI_PLUGIN_API_VERSION 3
 
     // Handle of the calling plugin, given to OptiPluginInit
     typedef struct OptiPlugin OptiPlugin;
 
     // Called every frame while the tab is selected and the menu is open
     typedef void (*OptiDrawTabFn)(void* userData);
+
+    // A Streamline interposer function the plugin handles (RegisterStreamlineRoutes)
+    typedef struct OptiStreamlineRoute
+    {
+        const char* exportName; // the function's export name in the interposer
+        void* handler;          // called instead of the function, same signature
+        void** next;            // receives the function to call to continue, NULL while not installed
+    } OptiStreamlineRoute;
+
+    // The plugin's routes were installed on the interposer module (file version major.minor.patch)
+    typedef void (*OptiStreamlineHookedFn)(void* interposerModule, uint32_t major, uint32_t minor, uint32_t patch,
+                                           void* userData);
 
     typedef enum OptiLogLevel
     {
@@ -146,6 +158,20 @@ extern "C"
         // OptiScaler's own upscalers is in use. Call it once per frame from any thread; a name that isn't reported
         // for half a second is no longer shown.
         void (*ReportUpscaler)(OptiPlugin* plugin, const char* name, float gpuTimeMs);
+
+        // Version 3 -------------------------------------------------------------------------------------------
+
+        // Streamline functions a plugin handles itself (a plugin that provides a Streamline feature, ray
+        // reconstruction for example). Each route names a function of the game's Streamline 2.x interposer by its
+        // export name; OptiScaler installs the plugin's handler in front of that function in the same transaction
+        // it hooks the interposer with (at once when the interposer is already hooked) and stores in *next the
+        // function to call to continue (OptiScaler's own handling, if any, then Streamline). *next is NULL while
+        // the route is not installed. The routes are removed when OptiScaler unhooks the interposer and installed
+        // again on the next one. The route array is copied; next must stay valid for the lifetime of the process.
+        // Returns false if a route is invalid (nothing is kept) or the plugin already registered routes.
+        bool (*RegisterStreamlineRoutes)(OptiPlugin* plugin, const OptiStreamlineRoute* routes, uint32_t count);
+        // Called after OptiScaler installed the plugin's routes on an interposer (module handle and its file version)
+        bool (*SetStreamlineCallback)(OptiPlugin* plugin, OptiStreamlineHookedFn hooked, void* userData);
 
     } OptiPluginApi;
 

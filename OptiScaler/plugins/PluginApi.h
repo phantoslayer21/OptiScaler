@@ -29,4 +29,9 @@ class PluginApi
 
     // The upscaler a plugin reported in the last half second (ReportUpscaler), false when there is none
     static bool ReportedUpscaler(std::string* name, float* gpuTimeMs);
+
+    // Called by StreamlineHooks: installs the plugins' Streamline routes on the interposer it just hooked (2.x),
+    // and removes them before it unhooks the interposer
+    static void OnInterposerHooked(HMODULE module, uint32_t major, uint32_t minor, uint32_t patch);
+    static void OnInterposerUnhooking();
 };

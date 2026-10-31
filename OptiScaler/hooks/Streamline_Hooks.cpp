@@ -19,6 +19,7 @@
 #include <shaders/reproject/mouseInputs/InputCollection.h>
 
 #include <intrin.h>
+#include <plugins/PluginApi.h>
 #pragma intrinsic(_ReturnAddress)
 
 static std::wstring GetModulePath(HMODULE module)
@@ -1957,6 +1958,9 @@ void StreamlineHooks::unhookInterposer()
 {
     LOG_FUNC();
 
+    // Plugin routes sit in front of OptiScaler's own detours, they go first
+    PluginApi::OnInterposerUnhooking();
+
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
 
@@ -2170,6 +2174,9 @@ void StreamlineHooks::hookInterposer(HMODULE slInterposer)
                     o_slSetFeatureLoaded = nullptr;
                 }
             }
+
+            // Plugins that handle Streamline functions themselves (plugin API version 3)
+            PluginApi::OnInterposerHooked(slInterposer, sl_version.major, sl_version.minor, sl_version.patch);
         }
         else if (sl_version.major == 1)
         {
