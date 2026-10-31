@@ -12,7 +12,11 @@ This branch is OptiScaler with two changes for the WrongGPU upscaler. It is buil
    name, and the FSR-only panels (FSR 4 presets / models / color space, debug view, FSR 3.1 presets, FSR 3
    manual tuning) are hidden for it.
 2. **Plugin interface.** A port of OptiScaler's own `plugin-api` branch (commit `f24ebc05` by FakeMichau)
-   onto this nightly: an ASI plugin can add its own tab to the menu. The WrongGPU RR plugin uses it for its
-   Ray reconstruction box.
+   onto this nightly: an ASI plugin can add its own tab to the menu.
+3. **Plugin interface, version 2.** Two calls appended to that interface: `RegisterCustomCard` (a card at the
+   top of the Custom tab, the tab the menu opens on, shown in every upscaler state) and `ReportUpscaler` (an
+   upscaler a plugin runs itself, ray reconstruction for example, reports its name and GPU time; the FPS
+   overlay, the footer and the sidebar show it while none of OptiScaler's own upscalers runs). The WrongGPU RR
+   plugin uses them for its Ray reconstruction box and its frame time.
 
 Nothing else is changed. WrongGPU itself is a separate program; it is not part of this repository.
