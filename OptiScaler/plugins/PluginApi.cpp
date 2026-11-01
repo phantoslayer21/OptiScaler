@@ -396,6 +396,31 @@ bool Api_SetStreamlineCallback(OptiPlugin* plugin, OptiStreamlineHookedFn hooked
     return true;
 }
 
+// ---- NGX ray reconstruction provider (version 4)
+std::mutex _ngxRrMutex;
+OptiNgxRayReconstruction _ngxRr {};
+bool _ngxRrSet = false;
+
+bool Api_RegisterNgxRayReconstruction(OptiPlugin* plugin, const OptiNgxRayReconstruction* provider)
+{
+    if (plugin == nullptr || provider == nullptr || provider->size < sizeof(OptiNgxRayReconstruction) ||
+        provider->create == nullptr || provider->evaluate == nullptr || provider->release == nullptr)
+        return false;
+
+    std::lock_guard<std::mutex> lock(_ngxRrMutex);
+    if (_ngxRrSet)
+    {
+        LOG_WARN("[{}] An NGX ray reconstruction provider is already registered", plugin->name);
+        return false;
+    }
+
+    _ngxRr = *provider;
+    _ngxRr.size = sizeof(OptiNgxRayReconstruction);
+    _ngxRrSet = true;
+    LOG_INFO("[{}] Registered as the NGX ray reconstruction provider", plugin->name);
+    return true;
+}
+
 void Api_Section(const char* title)
 {
     if (_draw == nullptr)
@@ -693,6 +718,8 @@ const OptiPluginApi _api = {
 
     .RegisterStreamlineRoutes = Api_RegisterStreamlineRoutes,
     .SetStreamlineCallback = Api_SetStreamlineCallback,
+
+    .RegisterNgxRayReconstruction = Api_RegisterNgxRayReconstruction,
 };
 
 // Runs one tab or card callback with the widget state set up, a crash in it disables that entry
@@ -930,4 +957,10 @@ void PluginApi::OnInterposerUnhooking()
     }
 
     _slModule = nullptr;
+}
+
+const OptiNgxRayReconstruction* PluginApi::NgxRayReconstruction()
+{
+    std::lock_guard<std::mutex> lock(_ngxRrMutex);
+    return _ngxRrSet ? &_ngxRr : nullptr;
 }

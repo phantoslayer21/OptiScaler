@@ -42,7 +42,7 @@ extern "C"
 {
 #endif
 
-#define OPTI_PLUGIN_API_VERSION 3
+#define OPTI_PLUGIN_API_VERSION 4
 
     // Handle of the calling plugin, given to OptiPluginInit
     typedef struct OptiPlugin OptiPlugin;
@@ -61,6 +61,33 @@ extern "C"
     // OptiScaler hooked a Streamline interposer module (file version major.minor.patch)
     typedef void (*OptiStreamlineHookedFn)(void* interposerModule, uint32_t major, uint32_t minor, uint32_t patch,
                                            void* userData);
+
+    // Read access to the game's NGX parameter block for one call (RegisterNgxRayReconstruction). Keys are the
+    // block's own key strings. Each getter returns false when the key is not set (the output is left unchanged).
+    typedef struct OptiNgxParams
+    {
+        void* block; // the game's parameter block, opaque
+        bool (*getResource)(void* block, const char* key, void** resource); // ID3D12Resource* (DX12)
+        bool (*getPointer)(void* block, const char* key, void** value);     // plain pointer values (matrices etc.)
+        bool (*getUInt)(void* block, const char* key, uint32_t* value);
+        bool (*getInt)(void* block, const char* key, int32_t* value);
+        bool (*getFloat)(void* block, const char* key, float* value);
+    } OptiNgxParams;
+
+    // A plugin that provides ray reconstruction to games calling NGX directly (DX12). Calls arrive on the game's
+    // thread inside its NGX call; the command list is the game's own (record into it, do not close or execute it).
+    typedef struct OptiNgxRayReconstruction
+    {
+        uint32_t size;  // sizeof(OptiNgxRayReconstruction)
+        void* userData; // passed back to every function
+        // The game creates the ray reconstruction feature. Return false to refuse (the game sees a failure).
+        bool (*create)(void* userData, void* d3d12Device, void* commandList, const OptiNgxParams* params,
+                       void** context);
+        // One evaluation: read the inputs from params, record the work into commandList, write the output resource.
+        bool (*evaluate)(void* userData, void* context, void* commandList, const OptiNgxParams* params);
+        // The game released the feature (or OptiScaler shuts down).
+        void (*release)(void* userData, void* context);
+    } OptiNgxRayReconstruction;
 
     typedef enum OptiLogLevel
     {
@@ -174,6 +201,14 @@ extern "C"
         // the routes are installed, and at once if one is already hooked. A plugin that supports only some
         // Streamline versions registers its routes from this callback.
         bool (*SetStreamlineCallback)(OptiPlugin* plugin, OptiStreamlineHookedFn hooked, void* userData);
+
+        // Version 4 -------------------------------------------------------------------------------------------
+
+        // Ray reconstruction for games that call NGX directly (Unreal Engine's DLSS plugin, Nixxes ports): while a
+        // provider is registered, OptiScaler reports ray reconstruction as available in the capability parameters and
+        // sends the DX12 ray reconstruction feature's create / evaluate / release to it instead of its own handling.
+        // The structure is copied. One provider per process; returns false if one is already registered.
+        bool (*RegisterNgxRayReconstruction)(OptiPlugin* plugin, const OptiNgxRayReconstruction* provider);
 
     } OptiPluginApi;
 

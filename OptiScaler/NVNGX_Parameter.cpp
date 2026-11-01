@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "NVNGX_Parameter.h"
+#include "plugins/PluginApi.h"
 
 #include "SysUtils.h"
 #include "Config.h"
@@ -797,6 +798,16 @@ void InitNGXParameters(NVSDK_NGX_Parameter* InParams, API api)
 
         InParams->Set("SuperSamplingDenoising.Available", 0);
         InParams->Set("SuperSamplingDenoising.FeatureInitResult", 0);
+    }
+
+    // A plugin provides ray reconstruction for DX12 (plugin API version 4)
+    if (api == API::DX12 && PluginApi::NgxRayReconstruction() != nullptr)
+    {
+        InParams->Set("SuperSamplingDenoising.NeedsUpdatedDriver", 0);
+        InParams->Set("SuperSamplingDenoising.MinDriverVersionMajor", 0);
+        InParams->Set("SuperSamplingDenoising.MinDriverVersionMinor", 0);
+        InParams->Set("SuperSamplingDenoising.Available", 1);
+        InParams->Set("SuperSamplingDenoising.FeatureInitResult", 1);
     }
 
     if ((api == API::DX12 || api == API::Vulkan) && (State::Instance().activeFgInput == FGInput::DLSSG ||

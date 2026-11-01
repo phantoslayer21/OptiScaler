@@ -34,4 +34,7 @@ class PluginApi
     // and removes them before it unhooks the interposer
     static void OnInterposerHooked(HMODULE module, uint32_t major, uint32_t minor, uint32_t patch);
     static void OnInterposerUnhooking();
+
+    // The ray reconstruction provider a plugin registered for NGX-direct games (version 4), nullptr when none
+    static const OptiNgxRayReconstruction* NgxRayReconstruction();
 };
