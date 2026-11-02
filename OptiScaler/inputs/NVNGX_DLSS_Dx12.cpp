@@ -1261,8 +1261,11 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCom
         if (context != nullptr && rr != nullptr)
         {
             OptiNgxParams params = PluginRrParams(InParameters);
-            return rr->evaluate(rr->userData, context, InCmdList, &params) ? NVSDK_NGX_Result_Success
-                                                                           : NVSDK_NGX_Result_Fail;
+            // The provider records into the game's list: put the game's root state back afterwards (version 5)
+            PluginApi::BeginCommandListWork(nullptr, InCmdList);
+            const bool ok = rr->evaluate(rr->userData, context, InCmdList, &params);
+            PluginApi::EndCommandListWork(nullptr, InCmdList);
+            return ok ? NVSDK_NGX_Result_Success : NVSDK_NGX_Result_Fail;
         }
     }
 

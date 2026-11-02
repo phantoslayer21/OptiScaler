@@ -11,6 +11,7 @@
 
 #include <proxies/KernelBase_Proxy.h>
 #include "detours/detours.h"
+#include <hooks/D3D12_Hooks.h>
 
 struct OptiPlugin
 {
@@ -421,6 +422,63 @@ bool Api_RegisterNgxRayReconstruction(OptiPlugin* plugin, const OptiNgxRayRecons
     return true;
 }
 
+// ---- Work a plugin records into the game's command list (version 5)
+// Per thread: pairs come from the game's thread inside its own call (slEvaluateFeature, NGX evaluate)
+thread_local int _cmdListWorkDepth = 0;
+thread_local bool _cmdListWorkRestore = false; // tracking was on at the outermost Begin: End restores
+std::atomic<bool> _cmdListWorkLogged { false };
+std::atomic<bool> _cmdListWorkEndLogged { false };
+
+static std::string CmdListWorkOwner(OptiPlugin* plugin)
+{
+    return plugin != nullptr ? plugin->name : std::string("NGX ray reconstruction");
+}
+
+void Api_BeginExternalCommandListWork(OptiPlugin* plugin, void* commandList)
+{
+    if (commandList == nullptr || _cmdListWorkDepth++ > 0)
+        return;
+
+    auto config = Config::Instance();
+    const bool restoreCompute = config->RestoreComputeSignature.value_or_default();
+    const bool restoreGraphics = config->RestoreGraphicSignature.value_or_default();
+
+    if (!_cmdListWorkLogged.exchange(true))
+        LOG_INFO("[{}] Command list work bracket in use: restore compute {}, graphics {}, extended {}",
+                 CmdListWorkOwner(plugin), restoreCompute, restoreGraphics,
+                 config->ExtendedStateRestore.value_or_default());
+
+    // Tracking already off: one of OptiScaler's own upscaler calls is running and restores itself
+    _cmdListWorkRestore = D3D12Hooks::IsRootSignatureTrackingEnabled();
+    if (!_cmdListWorkRestore)
+        return;
+
+    if (restoreCompute || restoreGraphics)
+        D3D12Hooks::HookToCommandListLate(static_cast<ID3D12GraphicsCommandList*>(commandList));
+
+    // The plugin's bindings must not be recorded as the game's
+    D3D12Hooks::SetRootSignatureTracking(false);
+}
+
+void Api_EndExternalCommandListWork(OptiPlugin* plugin, void* commandList)
+{
+    if (commandList == nullptr || _cmdListWorkDepth == 0 || --_cmdListWorkDepth > 0)
+        return;
+
+    if (!_cmdListWorkRestore)
+        return;
+
+    _cmdListWorkRestore = false;
+    auto* cmdList = static_cast<ID3D12GraphicsCommandList*>(commandList);
+
+    if (!_cmdListWorkEndLogged.exchange(true))
+        LOG_INFO("[{}] First command list work end: game root signature known {}", CmdListWorkOwner(plugin),
+                 D3D12Hooks::CanRestoreRootSignature(cmdList));
+
+    D3D12Hooks::RestoreRoot(cmdList);
+    D3D12Hooks::SetRootSignatureTracking(true);
+}
+
 void Api_Section(const char* title)
 {
     if (_draw == nullptr)
@@ -720,6 +778,9 @@ const OptiPluginApi _api = {
     .SetStreamlineCallback = Api_SetStreamlineCallback,
 
     .RegisterNgxRayReconstruction = Api_RegisterNgxRayReconstruction,
+
+    .BeginExternalCommandListWork = Api_BeginExternalCommandListWork,
+    .EndExternalCommandListWork = Api_EndExternalCommandListWork,
 };
 
 // Runs one tab or card callback with the widget state set up, a crash in it disables that entry
@@ -957,6 +1018,16 @@ void PluginApi::OnInterposerUnhooking()
     }
 
     _slModule = nullptr;
+}
+
+void PluginApi::BeginCommandListWork(OptiPlugin* plugin, void* commandList)
+{
+    Api_BeginExternalCommandListWork(plugin, commandList);
+}
+
+void PluginApi::EndCommandListWork(OptiPlugin* plugin, void* commandList)
+{
+    Api_EndExternalCommandListWork(plugin, commandList);
 }
 
 const OptiNgxRayReconstruction* PluginApi::NgxRayReconstruction()

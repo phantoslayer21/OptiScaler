@@ -42,7 +42,7 @@ extern "C"
 {
 #endif
 
-#define OPTI_PLUGIN_API_VERSION 4
+#define OPTI_PLUGIN_API_VERSION 5
 
     // Handle of the calling plugin, given to OptiPluginInit
     typedef struct OptiPlugin OptiPlugin;
@@ -209,6 +209,19 @@ extern "C"
         // sends the DX12 ray reconstruction feature's create / evaluate / release to it instead of its own handling.
         // The structure is copied. One provider per process; returns false if one is already registered.
         bool (*RegisterNgxRayReconstruction)(OptiPlugin* plugin, const OptiNgxRayReconstruction* provider);
+
+        // Version 5 -------------------------------------------------------------------------------------------
+
+        // Work a plugin records into the game's own command list outside of OptiScaler's upscaler calls (a feature
+        // it runs from a Streamline route, for example). Call Begin before the first command and End after the last
+        // one, on the game's thread, always as a pair. In between OptiScaler does not record the list's bound state
+        // as the game's; End puts back the game's root signatures (RestoreComputeSignature /
+        // RestoreGraphicSignature) and, with ExtendedStateRestore, also its root arguments, descriptor heaps and
+        // pipeline state, as the game last bound them. Games that do not rebind their state after such a call then
+        // keep working. commandList is the native ID3D12GraphicsCommandList*. Pairs may nest; only the outermost
+        // pair restores.
+        void (*BeginExternalCommandListWork)(OptiPlugin* plugin, void* commandList);
+        void (*EndExternalCommandListWork)(OptiPlugin* plugin, void* commandList);
 
     } OptiPluginApi;
 

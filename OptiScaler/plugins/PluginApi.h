@@ -37,4 +37,9 @@ class PluginApi
 
     // The ray reconstruction provider a plugin registered for NGX-direct games (version 4), nullptr when none
     static const OptiNgxRayReconstruction* NgxRayReconstruction();
+
+    // Brackets work a plugin records into the game's command list (version 5); also used around the NGX ray
+    // reconstruction provider's evaluate. plugin can be nullptr.
+    static void BeginCommandListWork(OptiPlugin* plugin, void* commandList);
+    static void EndCommandListWork(OptiPlugin* plugin, void* commandList);
 };

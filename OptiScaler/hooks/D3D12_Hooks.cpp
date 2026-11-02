@@ -1321,6 +1321,8 @@ static void RestoreBindings(ID3D12GraphicsCommandList* cmdList, const RootBindin
 
 void D3D12Hooks::SetRootSignatureTracking(bool enable) { t_upscalerActive = !enable; }
 
+bool D3D12Hooks::IsRootSignatureTrackingEnabled() { return !t_upscalerActive; }
+
 bool D3D12Hooks::CanRestoreRootSignature(ID3D12GraphicsCommandList* cmdList)
 {
     auto* state = GetCmdListState(cmdList, false);

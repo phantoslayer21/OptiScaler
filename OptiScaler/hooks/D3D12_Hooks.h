@@ -17,6 +17,8 @@ class D3D12Hooks
     // Enables/disables command list state recording for the CALLING THREAD.
     // Call with false before Opti records its own work into the game's command list, true afterwards.
     static void SetRootSignatureTracking(bool enable);
+    // State of SetRootSignatureTracking for the CALLING THREAD
+    static bool IsRootSignatureTrackingEnabled();
 
     static bool CanRestoreRootSignature(ID3D12GraphicsCommandList* cmdList);
     static void HookToCommandListLate(ID3D12GraphicsCommandList* commandList);
