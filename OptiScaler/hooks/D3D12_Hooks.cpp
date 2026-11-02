@@ -254,6 +254,60 @@ static RootRestoreHook<PFN_SetGraphicsRootUnorderedAccessView> s_SetGraphicsRoot
 static std::mutex s_lateHookMutex;
 static bool s_lateHooksInstalled = false;
 
+// [Hotfix] NullRootViewFix: a root CBV / SRV / UAV bound with GPU address 0 is undefined in D3D12; NVIDIA reads zeros,
+// AMD's driver substitutes a poison address and the GPU faults (RE Requiem path tracing). With the fix every null root
+// view is logged (first ones) and replaced by a zero-filled buffer of the device.
+static bool s_nullRootFix = false;
+static D3D12_GPU_VIRTUAL_ADDRESS s_nullRootDummy = 0;
+static std::atomic<uint32_t> s_nullRootCount {0};
+
+static std::once_flag s_nullRootDummyOnce;
+
+// NullRootViewFix diagnostics: acceleration-structure SRVs created with location 0 (null TLAS)
+using PFN_CreateShaderResourceViewNR = void (*)(ID3D12Device*, ID3D12Resource*, const D3D12_SHADER_RESOURCE_VIEW_DESC*,
+                                                D3D12_CPU_DESCRIPTOR_HANDLE);
+static PFN_CreateShaderResourceViewNR o_CreateSrvNR = nullptr;
+static std::atomic<uint32_t> s_nullAsCount {0};
+static std::atomic<uint32_t> s_asCount {0};
+static void hkCreateSrvNR(ID3D12Device* device, ID3D12Resource* resource, const D3D12_SHADER_RESOURCE_VIEW_DESC* desc,
+                          D3D12_CPU_DESCRIPTOR_HANDLE dest)
+{
+    if (desc != nullptr && desc->ViewDimension == D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE)
+    {
+        if (desc->RaytracingAccelerationStructure.Location == 0)
+        {
+            const uint32_t n = ++s_nullAsCount;
+            if (n <= 32 || (n & (n - 1)) == 0)
+                LOG_WARN("NullRootViewFix: acceleration-structure SRV created with location 0 (descriptor {:X}, occurrence {})",
+                         (uint64_t) dest.ptr, n);
+        }
+        else
+        {
+            const uint32_t n = ++s_asCount;
+            if (n <= 4 || (n & (n - 1)) == 0)
+                LOG_INFO("NullRootViewFix: acceleration-structure SRV at {:X} (occurrence {})",
+                         (uint64_t) desc->RaytracingAccelerationStructure.Location, n);
+        }
+    }
+    o_CreateSrvNR(device, resource, desc, dest);
+}
+static void CreateNullRootDummy(ID3D12GraphicsCommandList* commandList);
+
+static D3D12_GPU_VIRTUAL_ADDRESS FixNullRootView(const char* fn, ID3D12GraphicsCommandList* commandList, UINT index,
+                                                 D3D12_GPU_VIRTUAL_ADDRESS address)
+{
+    if (!s_nullRootFix || address != 0)
+        return address;
+    // created at the first null root view, from the command list's device (never inside device creation)
+    std::call_once(s_nullRootDummyOnce, [commandList] { CreateNullRootDummy(commandList); });
+    const uint32_t n = ++s_nullRootCount;
+    if (n <= 32 || (n & (n - 1)) == 0)
+        LOG_WARN("NullRootViewFix: {} root parameter {} bound with GPU address 0 (command list {:p}), using the zero buffer "
+                 "(occurrence {})",
+                 fn, index, (void*) commandList, n);
+    return s_nullRootDummy != 0 ? s_nullRootDummy : address;
+}
+
 // Raised while a late hook calls down the chain and while restoring
 static thread_local int t_suppressRecording = 0;
 
@@ -624,6 +678,7 @@ VALIDATE_HOOK(hkSetComputeRootConstantBufferView, PFN_SetComputeRootConstantBuff
 static void hkSetComputeRootConstantBufferView(ID3D12GraphicsCommandList* commandList, UINT RootParameterIndex,
                                                D3D12_GPU_VIRTUAL_ADDRESS BufferLocation)
 {
+    BufferLocation = FixNullRootView("SetComputeRootConstantBufferView", commandList, RootParameterIndex, BufferLocation);
     RecordRootView<Pipeline::Compute>(RootEntryType::CBV, commandList, RootParameterIndex, BufferLocation);
     s_SetComputeRootConstantBufferView.o_earlyHook(commandList, RootParameterIndex, BufferLocation);
 }
@@ -632,6 +687,7 @@ VALIDATE_HOOK(hkSetComputeRootShaderResourceView, PFN_SetComputeRootShaderResour
 static void hkSetComputeRootShaderResourceView(ID3D12GraphicsCommandList* commandList, UINT RootParameterIndex,
                                                D3D12_GPU_VIRTUAL_ADDRESS BufferLocation)
 {
+    BufferLocation = FixNullRootView("SetComputeRootShaderResourceView", commandList, RootParameterIndex, BufferLocation);
     RecordRootView<Pipeline::Compute>(RootEntryType::SRV, commandList, RootParameterIndex, BufferLocation);
     s_SetComputeRootShaderResourceView.o_earlyHook(commandList, RootParameterIndex, BufferLocation);
 }
@@ -640,6 +696,7 @@ VALIDATE_HOOK(hkSetComputeRootUnorderedAccessView, PFN_SetComputeRootUnorderedAc
 static void hkSetComputeRootUnorderedAccessView(ID3D12GraphicsCommandList* commandList, UINT RootParameterIndex,
                                                 D3D12_GPU_VIRTUAL_ADDRESS BufferLocation)
 {
+    BufferLocation = FixNullRootView("SetComputeRootUnorderedAccessView", commandList, RootParameterIndex, BufferLocation);
     RecordRootView<Pipeline::Compute>(RootEntryType::UAV, commandList, RootParameterIndex, BufferLocation);
     s_SetComputeRootUnorderedAccessView.o_earlyHook(commandList, RootParameterIndex, BufferLocation);
 }
@@ -682,6 +739,7 @@ VALIDATE_HOOK(hkSetGraphicsRootConstantBufferView, PFN_SetGraphicsRootConstantBu
 static void hkSetGraphicsRootConstantBufferView(ID3D12GraphicsCommandList* commandList, UINT RootParameterIndex,
                                                 D3D12_GPU_VIRTUAL_ADDRESS BufferLocation)
 {
+    BufferLocation = FixNullRootView("SetGraphicsRootConstantBufferView", commandList, RootParameterIndex, BufferLocation);
     RecordRootView<Pipeline::Graphics>(RootEntryType::CBV, commandList, RootParameterIndex, BufferLocation);
     s_SetGraphicsRootConstantBufferView.o_earlyHook(commandList, RootParameterIndex, BufferLocation);
 }
@@ -690,6 +748,7 @@ VALIDATE_HOOK(hkSetGraphicsRootShaderResourceView, PFN_SetGraphicsRootShaderReso
 static void hkSetGraphicsRootShaderResourceView(ID3D12GraphicsCommandList* commandList, UINT RootParameterIndex,
                                                 D3D12_GPU_VIRTUAL_ADDRESS BufferLocation)
 {
+    BufferLocation = FixNullRootView("SetGraphicsRootShaderResourceView", commandList, RootParameterIndex, BufferLocation);
     RecordRootView<Pipeline::Graphics>(RootEntryType::SRV, commandList, RootParameterIndex, BufferLocation);
     s_SetGraphicsRootShaderResourceView.o_earlyHook(commandList, RootParameterIndex, BufferLocation);
 }
@@ -698,6 +757,7 @@ VALIDATE_HOOK(hkSetGraphicsRootUnorderedAccessView, PFN_SetGraphicsRootUnordered
 static void hkSetGraphicsRootUnorderedAccessView(ID3D12GraphicsCommandList* commandList, UINT RootParameterIndex,
                                                  D3D12_GPU_VIRTUAL_ADDRESS BufferLocation)
 {
+    BufferLocation = FixNullRootView("SetGraphicsRootUnorderedAccessView", commandList, RootParameterIndex, BufferLocation);
     RecordRootView<Pipeline::Graphics>(RootEntryType::UAV, commandList, RootParameterIndex, BufferLocation);
     s_SetGraphicsRootUnorderedAccessView.o_earlyHook(commandList, RootParameterIndex, BufferLocation);
 }
@@ -1001,8 +1061,62 @@ void D3D12Hooks::HookToCommandListLate(ID3D12GraphicsCommandList* commandList)
     }
 }
 
+static void CreateNullRootDummy(ID3D12GraphicsCommandList* commandList)
+{
+    ID3D12Device* device = nullptr;
+    if (commandList->GetDevice(IID_PPV_ARGS(&device)) != S_OK || device == nullptr)
+    {
+        LOG_ERROR("NullRootViewFix: no device for the zero buffer; null root views are only logged");
+        return;
+    }
+
+    D3D12_HEAP_PROPERTIES heap {};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    D3D12_RESOURCE_DESC desc {};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    desc.Width = 4u << 20;
+    desc.Height = 1;
+    desc.DepthOrArraySize = 1;
+    desc.MipLevels = 1;
+    desc.SampleDesc.Count = 1;
+    desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+    ID3D12Resource* buffer = nullptr; // kept for the process lifetime
+    if (device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                        IID_PPV_ARGS(&buffer)) == S_OK &&
+        buffer != nullptr)
+    {
+        s_nullRootDummy = buffer->GetGPUVirtualAddress();
+        LOG_INFO("NullRootViewFix: on, zero buffer at GPU address {:X}", (uint64_t) s_nullRootDummy);
+    }
+    else
+    {
+        LOG_ERROR("NullRootViewFix: the zero buffer could not be created; null root views are only logged");
+    }
+    device->Release();
+}
+
 static void HookToCommandList(ID3D12Device* InDevice)
 {
+    {
+        auto value = Config::Instance()->GetRawValue("Hotfix", "NullRootViewFix");
+        s_nullRootFix = value.has_value() && (*value == "true" || *value == "1");
+        if (s_nullRootFix)
+            LOG_INFO("NullRootViewFix: on (null root views are logged and replaced by a zero buffer)");
+        if (s_nullRootFix && o_CreateSrvNR == nullptr)
+        {
+            o_CreateSrvNR = reinterpret_cast<PFN_CreateShaderResourceViewNR>((*(PVOID**) InDevice)[18]);
+            DetourTransactionBegin();
+            DetourUpdateThread(GetCurrentThread());
+            DetourAttach(reinterpret_cast<PVOID*>(&o_CreateSrvNR), reinterpret_cast<PVOID>(hkCreateSrvNR));
+            if (DetourTransactionCommit() != NO_ERROR)
+            {
+                o_CreateSrvNR = nullptr;
+                LOG_WARN("NullRootViewFix: CreateShaderResourceView hook failed");
+            }
+        }
+    }
+
     if (s_SetComputeRootSignature.o_earlyHook != nullptr || s_SetGraphicsRootSignature.o_earlyHook != nullptr)
         return;
 
@@ -1037,17 +1151,17 @@ static void HookToCommandList(ID3D12Device* InDevice)
         AttachIf(computeArgs, s_SetComputeRootDescriptorTable.o_earlyHook, hkSetComputeRootDescriptorTable);
         AttachIf(computeArgs, s_SetComputeRoot32BitConstant.o_earlyHook, hkSetComputeRoot32BitConstant);
         AttachIf(computeArgs, s_SetComputeRoot32BitConstants.o_earlyHook, hkSetComputeRoot32BitConstants);
-        AttachIf(computeArgs, s_SetComputeRootConstantBufferView.o_earlyHook, hkSetComputeRootConstantBufferView);
-        AttachIf(computeArgs, s_SetComputeRootShaderResourceView.o_earlyHook, hkSetComputeRootShaderResourceView);
-        AttachIf(computeArgs, s_SetComputeRootUnorderedAccessView.o_earlyHook, hkSetComputeRootUnorderedAccessView);
+        AttachIf(computeArgs || s_nullRootFix, s_SetComputeRootConstantBufferView.o_earlyHook, hkSetComputeRootConstantBufferView);
+        AttachIf(computeArgs || s_nullRootFix, s_SetComputeRootShaderResourceView.o_earlyHook, hkSetComputeRootShaderResourceView);
+        AttachIf(computeArgs || s_nullRootFix, s_SetComputeRootUnorderedAccessView.o_earlyHook, hkSetComputeRootUnorderedAccessView);
 
         // Graphics
         AttachIf(graphicsArgs, s_SetGraphicsRootDescriptorTable.o_earlyHook, hkSetGraphicsRootDescriptorTable);
         AttachIf(graphicsArgs, s_SetGraphicsRoot32BitConstant.o_earlyHook, hkSetGraphicsRoot32BitConstant);
         AttachIf(graphicsArgs, s_SetGraphicsRoot32BitConstants.o_earlyHook, hkSetGraphicsRoot32BitConstants);
-        AttachIf(graphicsArgs, s_SetGraphicsRootConstantBufferView.o_earlyHook, hkSetGraphicsRootConstantBufferView);
-        AttachIf(graphicsArgs, s_SetGraphicsRootShaderResourceView.o_earlyHook, hkSetGraphicsRootShaderResourceView);
-        AttachIf(graphicsArgs, s_SetGraphicsRootUnorderedAccessView.o_earlyHook, hkSetGraphicsRootUnorderedAccessView);
+        AttachIf(graphicsArgs || s_nullRootFix, s_SetGraphicsRootConstantBufferView.o_earlyHook, hkSetGraphicsRootConstantBufferView);
+        AttachIf(graphicsArgs || s_nullRootFix, s_SetGraphicsRootShaderResourceView.o_earlyHook, hkSetGraphicsRootShaderResourceView);
+        AttachIf(graphicsArgs || s_nullRootFix, s_SetGraphicsRootUnorderedAccessView.o_earlyHook, hkSetGraphicsRootUnorderedAccessView);
 
         if (DetourTransactionCommit() == NO_ERROR)
         {
