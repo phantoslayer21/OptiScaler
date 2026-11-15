@@ -32,10 +32,11 @@ This branch is OptiScaler with a few changes for the WrongGPU upscaler. It is bu
 6. **The player's selection in the version box is told to the upscaler.** When the player selects a version in
    the version box, the upscaler's DLL is told first, through `WrongGpuHostSelectedV1(versionId)`, if it
    exports it (WrongGPU's FFX DLL does, and records a selection of one of its models as the player's model
-   choice). Then the upscaler is recreated as before, so the new choice runs at once. If WrongGPU recorded the
-   choice, selecting the entry that is already selected recreates the upscaler too, because the model that
-   ran may have been chosen elsewhere (WrongGPU's launcher or menu plugin). If WrongGPU could not save the
-   choice, a notification says so. The call is made only for a selection in the menu, never for the index
-   read from `OptiScaler.ini`. A DLL without the export is never called.
+   choice). The result decides: 1, the selected model runs from now on: the upscaler is recreated, also when
+   the entry was already selected (the model that ran may have been chosen elsewhere, in WrongGPU's launcher
+   or menu plugin); 0, nothing changed for WrongGPU: as before, a new entry recreates the upscaler; negative,
+   not saved: nothing changes (no new index, no recreate) and a notification says "Not saved, try again". The
+   call is made only for a selection in the menu, never for the index read from `OptiScaler.ini`. A DLL
+   without the export is never called.
 
 Nothing else is changed. WrongGPU itself is a separate program; it is not part of this repository.

@@ -1076,8 +1076,9 @@ static bool IsOn12(Upscaler upscaler)
 // WrongGPU edition: the player selected version `versionId` in the version box. WrongGPU's FFX dll exports
 // WrongGpuHostSelectedV1 (WrongGPU's include/wronggpu_host_event.h) and records a selection of one of its models as the
 // player's model choice, so it is called before the backend change recreates the upscaler. Only a selection made here
-// calls it, never an index read from the ini. A dll without the export is not called (returns 0, nothing to recreate).
-// Returns WrongGPU's result: 1 recorded, 2 this session only, 0 no model choice, -1 not saved yet, -2 refused.
+// calls it, never an index read from the ini. A dll without the export is not called (0).
+// Returns WrongGPU's result: 1 this model runs from now on (recreate, also when the entry was already selected), 0
+// nothing changed, negative not saved (nothing changes: no new index, no recreate; the player is told to try again).
 static int32_t NotifyHostSelected(HMODULE module, uint64_t versionId)
 {
     if (module == nullptr)
@@ -1092,14 +1093,11 @@ static int32_t NotifyHostSelected(HMODULE module, uint64_t versionId)
     const int32_t result = hostSelected(versionId);
     LOG_INFO("WrongGPU: the player selected version {:X}, result {}", versionId, result);
 
-    if (result == -1 || result == -2)
+    if (result < 0)
     {
-        ImGuiToast notification { result == -1 ? ImGuiToastType::Warning : ImGuiToastType::Error, 10000 };
+        ImGuiToast notification { ImGuiToastType::Warning, 10000 };
         notification.setTitle("WrongGPU model choice");
-        notification.setContent(result == -1
-                                    ? "Not saved yet: the model runs now and is saved at the next start of the "
-                                      "upscaler. See WrongGPU's log."
-                                    : "Not saved: WrongGPU refused it. See WrongGPU's log.");
+        notification.setContent("Not saved, try again. The model that runs did not change. See WrongGPU's log.");
         ImGui::InsertNotification(notification);
     }
 
@@ -3870,16 +3868,17 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
                     if (!ImGui::Selectable(StrFmt("%s%s##%d", prefix, versions->names[n], n).c_str(), ffxIndex == n))
                         continue;
 
-                    // WrongGPU edition: the selection goes to the upscaler's dll first (NotifyHostSelected). A model
-                    // choice WrongGPU recorded recreates the upscaler also when the entry was already selected: the
-                    // model that ran may have been chosen elsewhere (WrongGPU's launcher or menu plugin).
+                    // WrongGPU edition: the selection goes to the upscaler's dll first (NotifyHostSelected). 1: this
+                    // model runs from now on, so the upscaler is recreated also when the entry was already selected
+                    // (the model that ran may have been chosen elsewhere: WrongGPU's launcher or menu plugin). Not
+                    // saved: nothing changes, not even the index. 0: as before, a new entry recreates the upscaler.
                     HMODULE module = customUpscaler != nullptr ? customUpscaler->module.dll
                                      : state.api == API::DX12 || currentBackend == Upscaler::FFX_on12
                                          ? FfxApiProxy::UpscalerModule(versions->ids[n])
                                          : nullptr;
                     const int32_t wrongGpu = NotifyHostSelected(module, versions->ids[n]);
 
-                    if (ffxIndex != n || wrongGpu == 1)
+                    if (wrongGpu >= 0 && (ffxIndex != n || wrongGpu == 1))
                     {
                         upscalerIndex = n;
                         state.newBackend = currentBackend;
