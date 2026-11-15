@@ -1,0 +1,16 @@
+name: WrongGPU edition tests
+on: [push, pull_request]
+jobs:
+  host-event:
+    name: Version box and WrongGPU's list order
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: ilammy/msvc-dev-cmd@v1.13.0
+        with:
+          arch: x64
+      - name: Build and run wronggpu-edition-tests/host_event_test.cpp
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          cl /nologo /EHsc /std:c++17 /W4 /WX /I OptiScaler/misc wronggpu-edition-tests/host_event_test.cpp /Fe:host_event_test.exe
+          ./host_event_test.exe
