@@ -29,5 +29,18 @@ This branch is OptiScaler with a few changes for the WrongGPU upscaler. It is bu
 5. **Diagnostics, off by default.** `[Hotfix] DredDiagnostics=true` (D3D12 DRED breadcrumbs and page-fault
    data, dumped once when the device is removed) and `[Hotfix] NullRootViewFix=true` (null root views logged
    and replaced by a zero buffer).
+6. **The player's selection in the version box is told to the upscaler.** When the player selects a version in
+   the version box, the upscaler's DLL is told first, through `WrongGpuHostSelectedV1(versionId)`, if it
+   exports it (WrongGPU's FFX DLL does, and records a selection of one of its models as the player's model
+   choice). The result decides (`OptiScaler/misc/WrongGpuHostEvent.h`, `OnVersionSelected`): 1, the selected
+   model runs from now on: the upscaler is recreated, also when the entry was already selected (the model that
+   ran may have been chosen elsewhere, in WrongGPU's launcher or menu plugin); 0, nothing changed for WrongGPU:
+   as before, a new entry recreates the upscaler; negative, not saved: nothing changes (no new index, no
+   recreate) and a notification says "Not saved, try again". The call is made only for a selection in the
+   menu, never for the index read from `OptiScaler.ini`. A DLL without the export is never called. The order of
+   WrongGPU's model entries in the list its DLL returns (the index this box stores is a position in that list)
+   is WrongGPU's `wg_model_entries.h`, copied byte for byte to `OptiScaler/include/wronggpu/` (WrongGPU's CI
+   checks the copy); a list in another order is logged. `wronggpu-edition-tests/host_event_test.cpp` tests both,
+   built and run by the `WrongGPU edition tests` workflow.
 
 Nothing else is changed. WrongGPU itself is a separate program; it is not part of this repository.

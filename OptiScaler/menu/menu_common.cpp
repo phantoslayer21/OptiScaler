@@ -10,6 +10,7 @@
 #include <proxies/XeSS_Proxy.h>
 #include <proxies/XeFG_Proxy.h>
 #include <proxies/FfxApi_Proxy.h>
+#include <misc/WrongGpuHostEvent.h>
 #include <upscalers/ffx/FFXFeature.h>
 #include <fsr4/FSR4Models.h>
 #include <fsr4/FSR4Presets.h>
@@ -1071,6 +1072,29 @@ static bool IsOn12(Upscaler upscaler)
     default:
         return false;
     }
+}
+
+// WrongGPU edition: the player selected version `versionId` in the version box. WrongGPU's FFX dll exports
+// WrongGpuHostSelectedV1 (WrongGPU's include/wronggpu_host_event.h) and records a selection of one of its models as the
+// player's model choice, so it is called before the backend change recreates the upscaler. Only a selection made here
+// calls it, never an index read from the ini. A dll without the export is not called (0). What the box then does is
+// misc/WrongGpuHostEvent.h's OnVersionSelected: 1 recreate (also for the entry already selected), 0 as before, negative
+// not saved (nothing changes; the player is told to try again).
+static int32_t NotifyHostSelected(HMODULE module, uint64_t versionId)
+{
+    const int32_t result = wronggpu_edition::CallHostSelected(
+        [module]() -> wronggpu_edition::PfnHostSelected
+        {
+            return module != nullptr ? reinterpret_cast<wronggpu_edition::PfnHostSelected>(
+                                           GetProcAddress(module, "WrongGpuHostSelectedV1"))
+                                     : nullptr;
+        },
+        versionId);
+
+    if (result != 0)
+        LOG_INFO("WrongGPU: the player selected version {:X}, result {}", versionId, result);
+
+    return result;
 }
 
 // Name without the w/Dx12 suffix, that one is shown as a tag in the list instead
@@ -3821,6 +3845,18 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
             ImGui::Spacing();
 
             const int ffxIndex = upscalerIndex.value_or_default();
+
+            // WrongGPU edition: WrongGPU's model entries must be where misc/wg_model_entries.h says (the index this box
+            // stores is a position in this list); a mismatch is logged once per list
+            static const void* checkedList = nullptr;
+            if (checkedList != versions)
+            {
+                checkedList = versions;
+                if (!wronggpu_edition::ListOrderMatches(versions->names))
+                    LOG_WARN(
+                        "WrongGPU: the version list's model entries are not in the order wg_model_entries.h defines");
+            }
+
             // A custom upscaler's versions carry its own names (no "FSR " in front) and the box carries its name
             const char* prefix = customName.empty() ? "FSR " : "";
             auto currentName = ffxIndex >= 0 && ffxIndex < versions->names.size()
@@ -3834,10 +3870,34 @@ void MenuCommon::RenderActiveUpscalerSettings(RenderMenuContext& ctx)
             {
                 for (auto n : FfxVersionsNewestFirst(*versions))
                 {
-                    if (ImGui::Selectable(StrFmt("%s%s##%d", prefix, versions->names[n], n).c_str(), ffxIndex == n) &&
-                        ffxIndex != n)
+                    if (!ImGui::Selectable(StrFmt("%s%s##%d", prefix, versions->names[n], n).c_str(), ffxIndex == n))
+                        continue;
+
+                    // WrongGPU edition: the selection goes to the upscaler's dll first (NotifyHostSelected), then
+                    // OnVersionSelected decides (misc/WrongGpuHostEvent.h): 1 recreate, also when the entry was already
+                    // selected (the model that ran may have been chosen elsewhere: WrongGPU's launcher or menu plugin);
+                    // not saved: nothing changes, not even the index; 0: as before, a new entry recreates the upscaler.
+                    HMODULE module = customUpscaler != nullptr ? customUpscaler->module.dll
+                                     : state.api == API::DX12 || currentBackend == Upscaler::FFX_on12
+                                         ? FfxApiProxy::UpscalerModule(versions->ids[n])
+                                         : nullptr;
+                    const auto action =
+                        wronggpu_edition::OnVersionSelected(ffxIndex, n, NotifyHostSelected(module, versions->ids[n]));
+
+                    if (action.notSaved)
                     {
+                        ImGuiToast notification { ImGuiToastType::Warning, 10000 };
+                        notification.setTitle("WrongGPU model choice");
+                        notification.setContent(
+                            "Not saved, try again. The model that runs did not change. See WrongGPU's log.");
+                        ImGui::InsertNotification(notification);
+                    }
+
+                    if (action.setIndex)
                         upscalerIndex = n;
+
+                    if (action.recreate)
+                    {
                         state.newBackend = currentBackend;
                         MARK_ALL_BACKENDS_CHANGED();
                     }
